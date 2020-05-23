@@ -83,6 +83,10 @@ class NavSatTransform
     //!
     std::array<double, 2> correctUtmJumps(double latitude, double longitude, double utmX, double utmY) const;
 
+    //! @brief Removes jumps from the utmX and utmY coordinates passed in
+    //!
+    std::array<double, 2> removeUtmJumpCorrections(double utmX, double utmY) const;
+
     //! @brief Callback for the to Lat Long service
     //!
     bool toLLCallback(robot_localization::ToLL::Request& request, robot_localization::ToLL::Response& response);

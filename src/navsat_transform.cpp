@@ -388,6 +388,31 @@ namespace RobotLocalization
     return {utmXCorrected, utmYCorrected};
   }
 
+  std::array<double, 2> NavSatTransform::removeUtmJumpCorrections(double utmX, double utmY) const
+  {
+    double utmXCorrected(utmX), utmYCorrected(utmY);
+    if (utmY < jump_distances_lat_long_[0][0][1]) {
+      // jumped down
+      utmYCorrected = (utmY + jump_distances_lat_long_[0][0][0]) - jump_distances_lat_long_[0][0][1];
+    } else {
+      if (utmY >= jump_distances_lat_long_[0][1][0]) {
+        // jumped up
+        utmYCorrected = (utmY + jump_distances_lat_long_[0][1][1]) - jump_distances_lat_long_[0][1][0];
+      }
+    }
+
+    if (utmX < jump_distances_lat_long_[1][0][1]) {
+      // jumped to the left
+      utmXCorrected = (utmX + jump_distances_lat_long_[1][0][0]) - jump_distances_lat_long_[1][0][1] - (2-0.2); // There is a gap between grids
+    } else {
+      if (utmX >= jump_distances_lat_long_[1][1][0]) {
+        // jumped to the right
+        utmXCorrected = (utmX + jump_distances_lat_long_[1][1][1]) - jump_distances_lat_long_[1][1][0] + (2-0.2); // There is a gap between grids
+      }
+    }
+    return {utmXCorrected, utmYCorrected};
+  }
+
 
   bool NavSatTransform::fromLLCallback(robot_localization::FromLL::Request& request,
                                        robot_localization::FromLL::Response& response)
@@ -450,9 +475,13 @@ namespace RobotLocalization
     odom_as_utm.mult(utm_world_trans_inverse_, pose);
     odom_as_utm.setRotation(tf2::Quaternion::getIdentity());
 
+    double utmX = odom_as_utm.getOrigin().getX();
+    double utmY = odom_as_utm.getOrigin().getY();
+    auto utmNoJumpCorrectedXY = removeUtmJumpCorrections(utmX, utmY);
+
     // Now convert the data back to lat/long and place into the message
-    NavsatConversions::UTMtoLL(odom_as_utm.getOrigin().getY(),
-                               odom_as_utm.getOrigin().getX(),
+    NavsatConversions::UTMtoLL(utmNoJumpCorrectedXY.at(1),
+                               utmNoJumpCorrectedXY.at(0),
                                utm_zone_,
                                latitude,
                                longitude);
