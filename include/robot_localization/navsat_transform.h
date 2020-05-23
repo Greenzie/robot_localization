@@ -79,6 +79,10 @@ class NavSatTransform
     //!
     bool datumCallback(robot_localization::SetDatum::Request& request, robot_localization::SetDatum::Response&);
 
+    //! @brief Returns utmX and utmY corrected for utm grid jumps
+    //!
+    std::array<double, 2> correctUtmJumps(double latitude, double longitude, double utmX, double utmY) const;
+
     //! @brief Callback for the to Lat Long service
     //!
     bool toLLCallback(robot_localization::ToLL::Request& request, robot_localization::ToLL::Response& response);
@@ -145,6 +149,7 @@ class NavSatTransform
     //! @param[in] point the point in map frame to use to transform
     //!
     void mapToLL(const tf2::Vector3& point, double& latitude, double& longitude, double& altitude) const;
+
 
     //! @brief Whether or not we broadcast the UTM transform
     //!

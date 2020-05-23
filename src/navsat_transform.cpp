@@ -363,6 +363,32 @@ namespace RobotLocalization
     return true;
   }
 
+  std::array<double, 2> NavSatTransform::correctUtmJumps(double latitude, double longitude, double utmX, double utmY) const
+  {
+    double utmYCorrected(utmY), utmXCorrected(utmX);
+    if (latitude < jump_points_lat_long_[0][0]) {
+      // jumped down
+      utmYCorrected = (utmY - jump_distances_lat_long_[0][0][0]) + jump_distances_lat_long_[0][0][1];
+    } else {
+      if (latitude >= jump_points_lat_long_[0][1]) {
+        // jumped up
+        utmYCorrected = (utmY - jump_distances_lat_long_[0][1][1]) + jump_distances_lat_long_[0][1][0];
+      }
+    }
+
+    if (longitude < jump_points_lat_long_[1][0]) {
+      // jumped to the left
+      utmXCorrected = (utmX - jump_distances_lat_long_[1][0][0]) + jump_distances_lat_long_[1][0][1] + (2-0.2); // There is a gap between grids
+    } else {
+      if (longitude >= jump_points_lat_long_[1][1]) {
+        // jumped to the right
+        utmXCorrected = (utmX - jump_distances_lat_long_[1][1][1]) + jump_distances_lat_long_[1][1][0] - (2-0.2); // There is a gap between grids
+      }
+    }
+    return {utmXCorrected, utmYCorrected};
+  }
+
+
   bool NavSatTransform::fromLLCallback(robot_localization::FromLL::Request& request,
                                        robot_localization::FromLL::Response& response)
   {
@@ -377,7 +403,9 @@ namespace RobotLocalization
     std::string utm_zone_tmp;
     NavsatConversions::LLtoUTM(latitude, longitude, utmY, utmX, utm_zone_tmp);
 
-    utm_pose.setOrigin(tf2::Vector3(utmX, utmY, altitude));
+    auto correctedUtmXY = correctUtmJumps(latitude, longitude, utmX, utmY);
+
+    utm_pose.setOrigin(tf2::Vector3(correctedUtmXY.at(0), correctedUtmXY.at(1), altitude));
 
     nav_msgs::Odometry gps_odom;
 
@@ -558,29 +586,8 @@ namespace RobotLocalization
       std::string utm_zone_tmp;
       NavsatConversions::LLtoUTM(latitude, longitude, utmY, utmX, utm_zone_tmp);
 
-      double utmXCorrected(utmX), utmYCorrected(utmY);
-      // Correct for a jump occuring
-      // It looks like latitude utm coordinates do not jump?
-      if (latitude < jump_points_lat_long_[0][0]) {
-        // jumped down
-        utmYCorrected = (utmY - jump_distances_lat_long_[0][0][0]) + jump_distances_lat_long_[0][0][1];
-      } else {
-        if (latitude >= jump_points_lat_long_[0][1]) {
-          // jumped up
-          utmYCorrected = (utmY - jump_distances_lat_long_[0][1][1]) + jump_distances_lat_long_[0][1][0];
-        }
-      }
-
-      if (longitude < jump_points_lat_long_[1][0]) {
-        // jumped to the left
-        utmXCorrected = (utmX - jump_distances_lat_long_[1][0][0]) + jump_distances_lat_long_[1][0][1] + (2-0.2); // There is a gap between grids
-      } else {
-        if (longitude >= jump_points_lat_long_[1][1]) {
-          // jumped to the right
-          utmXCorrected = (utmX - jump_distances_lat_long_[1][1][1]) + jump_distances_lat_long_[1][1][0] - (2-0.2); // There is a gap between grids
-        }
-      }
-      latest_utm_pose_jump_corrected_.setOrigin(tf2::Vector3(utmXCorrected, utmYCorrected, msg->altitude));
+      auto correctedUtmXY = correctUtmJumps(latitude, longitude, utmX, utmY);
+      latest_utm_pose_jump_corrected_.setOrigin(tf2::Vector3(correctedUtmXY[0], correctedUtmXY[1], msg->altitude));
 
       latest_utm_pose_.setOrigin(tf2::Vector3(utmX, utmY, msg->altitude));
       latest_utm_covariance_.setZero();
