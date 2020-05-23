@@ -545,20 +545,45 @@ namespace RobotLocalization
 
     if (good_gps)
     {
+      double latitude(msg->latitude), longitude(msg->longitude);
+
       // If we haven't computed the transform yet, then
-      // store this message as the initial GPS data to use
+      // store this message as the initial GPS data to useeccPrimeSquared
       if (!transform_good_ && !use_manual_datum_)
       {
         setTransformGps(msg);
       }
 
-      double utmX = 0;
-      double utmY = 0;
+      double utmX(0), utmY(0);
       std::string utm_zone_tmp;
-      NavsatConversions::LLtoUTM(msg->latitude, msg->longitude, utmY, utmX, utm_zone_tmp);
+      NavsatConversions::LLtoUTM(latitude, longitude, utmY, utmX, utm_zone_tmp);
+
+      double utmXCorrected(utmX), utmYCorrected(utmY);
+      // Correct for a jump occuring
+      // It looks like latitude utm coordinates do not jump?
+      if (latitude < jump_points_lat_long_[0][0]) {
+        // jumped down
+        utmYCorrected = (utmY - jump_distances_lat_long_[0][0][0]) + jump_distances_lat_long_[0][0][1];
+      } else {
+        if (latitude >= jump_points_lat_long_[0][1]) {
+          // jumped up
+          utmYCorrected = (utmY - jump_distances_lat_long_[0][1][1]) + jump_distances_lat_long_[0][1][0];
+        }
+      }
+
+      if (longitude < jump_points_lat_long_[1][0]) {
+        // jumped to the left
+        utmXCorrected = (utmX - jump_distances_lat_long_[1][0][0]) + jump_distances_lat_long_[1][0][1] + (2-0.2); // There is a gap between grids
+      } else {
+        if (longitude >= jump_points_lat_long_[1][1]) {
+          // jumped to the right
+          utmXCorrected = (utmX - jump_distances_lat_long_[1][1][1]) + jump_distances_lat_long_[1][1][0] - (2-0.2); // There is a gap between grids
+        }
+      }
+      latest_utm_pose_jump_corrected_.setOrigin(tf2::Vector3(utmXCorrected, utmYCorrected, msg->altitude));
+
       latest_utm_pose_.setOrigin(tf2::Vector3(utmX, utmY, msg->altitude));
       latest_utm_covariance_.setZero();
-
       // Copy the measurement's covariance matrix so that we can rotate it later
       for (size_t i = 0; i < POSITION_SIZE; i++)
       {
@@ -707,7 +732,7 @@ namespace RobotLocalization
 
     if (transform_good_ && gps_updated_ && odom_updated_)
     {
-      gps_odom = utmToMap(latest_utm_pose_);
+      gps_odom = utmToMap(latest_utm_pose_jump_corrected_);
 
       tf2::Transform transformed_utm_gps;
       tf2::fromMsg(gps_odom.pose.pose, transformed_utm_gps);
@@ -755,15 +780,94 @@ namespace RobotLocalization
     return new_data;
   }
 
+std::array<double, 2> findLongitudeBounds(double longitude){
+  // These are from the LLtoUTM function in NavsatConversions
+  auto getTmpLongitude = [](double lng)->double{return (lng+180)-static_cast<int>((lng+180)/360)*360-180;};
+  auto getZoneNumber = [&getTmpLongitude](double lng)->int{return static_cast<int>((getTmpLongitude(lng) + 180)/6) + 1;};
+  const int currentZoneNumber = getZoneNumber(longitude);
+
+  // Search for the lower and upper jump longitude from your current position
+  double jump_longitude_min = std::floor(longitude);
+  while (getZoneNumber(jump_longitude_min) == currentZoneNumber &&
+         getZoneNumber(jump_longitude_min + 0.1) == currentZoneNumber &&
+         getZoneNumber(jump_longitude_min - 0.1) == currentZoneNumber){
+    jump_longitude_min -= 1;
+  }
+  double jump_longitude_max = std::ceil(longitude);
+  while (getZoneNumber(jump_longitude_max) == currentZoneNumber &&
+         getZoneNumber(jump_longitude_max + 0.1) == currentZoneNumber &&
+         getZoneNumber(jump_longitude_max - 0.1) == currentZoneNumber){
+    jump_longitude_max += 1;
+  }
+  std::cout << "Min lon: " << jump_longitude_min << std::endl;
+  std::cout << "Max lon: " << jump_longitude_max << std::endl;
+  return std::array<double, 2> {jump_longitude_min, jump_longitude_max};
+}
+
+std::array<double, 2> findLatitudeBounds(double latitude){
+  const char currentletter = NavsatConversions::UTMLetterDesignator(latitude);
+
+  // Search for the lower and upper jump latitude from your current position
+  double min_latitude = std::floor(latitude);
+  while(NavsatConversions::UTMLetterDesignator(min_latitude) == currentletter &&
+         NavsatConversions::UTMLetterDesignator(min_latitude + 0.1) == currentletter &&
+         NavsatConversions::UTMLetterDesignator(min_latitude - 0.1) == currentletter){
+    min_latitude -= 1;
+  }
+  double max_latitude = std::ceil(latitude);
+  while(NavsatConversions::UTMLetterDesignator(max_latitude) == currentletter &&
+      NavsatConversions::UTMLetterDesignator(max_latitude + 0.1) == currentletter &&
+      NavsatConversions::UTMLetterDesignator(max_latitude - 0.1) == currentletter){
+    max_latitude += 1;
+  }
+  std::cout << "Min lat: " << min_latitude << std::endl;
+  std::cout << "Max lat: " << max_latitude << std::endl;
+  return std::array<double, 2> {min_latitude, max_latitude};
+}
+
+std::array<std::array<double, 2>, 2> whereDoIJump(double latitude, double longitude){
+  return std::array<std::array<double, 2>, 2> {findLatitudeBounds(latitude), findLongitudeBounds(longitude)};
+}
+
   void NavSatTransform::setTransformGps(const sensor_msgs::NavSatFixConstPtr& msg)
   {
+    const double latitude = msg->latitude;
+    const double longitude = msg->longitude;
+
+    auto getUtm = [](double lat, double lon)->std::array<double, 2>{
+      double utmx(0);
+      double utmy(0);
+      double gamma(0);
+      std::string zone;
+      NavsatConversions::LLtoUTM(lat, lon, utmy, utmx, zone, gamma);
+      return std::array<double, 2> {utmx, utmy};
+    };
+
+    transform_utm_origin_ = getUtm(latitude, longitude);
+    jump_points_lat_long_ = whereDoIJump(latitude, longitude);
+
+    // jiggle the bounds and save their values on both sides
+    std::array<double, 2> lat_min_boundary { getUtm(jump_points_lat_long_[0][0]-1.11e-8, longitude)[1], getUtm(jump_points_lat_long_[0][0], longitude)[1]};
+    std::array<double, 2> lat_max_boundary { getUtm(jump_points_lat_long_[0][1]-1.11e-8, longitude)[1], getUtm(jump_points_lat_long_[0][1], longitude)[1]};
+    std::array<double, 2> lon_min_boundary { getUtm(latitude, jump_points_lat_long_[1][0]-1e-8)[0], getUtm(latitude, jump_points_lat_long_[1][0])[0]};
+    std::array<double, 2> lon_max_boundary { getUtm(latitude, jump_points_lat_long_[1][1]-1e-8)[0], getUtm(latitude, jump_points_lat_long_[1][1])[0]};
+    jump_distances_lat_long_[0][0] = lat_min_boundary;
+    jump_distances_lat_long_[0][1] = lat_max_boundary;
+    jump_distances_lat_long_[1][0] = lon_min_boundary;
+    jump_distances_lat_long_[1][1] = lon_max_boundary;
+
+    std::cout << "Min lat boundary: " << lat_min_boundary.at(0) << "\t" << lat_min_boundary.at(1) << std::endl;
+    std::cout << "Max lat boundary: " << lat_max_boundary.at(0) << "\t" << lat_max_boundary.at(1) << std::endl;
+    std::cout << "Min lon boundary: " << lon_min_boundary.at(0) << "\t" << lon_min_boundary.at(1) << std::endl;
+    std::cout << "Max lon boundary: " << lon_max_boundary.at(0) << "\t" << lon_max_boundary.at(1) << std::endl;
+
     double utm_x = 0;
     double utm_y = 0;
-    NavsatConversions::LLtoUTM(msg->latitude, msg->longitude, utm_y, utm_x, utm_zone_, utm_meridian_convergence_);
+    NavsatConversions::LLtoUTM(latitude, longitude, utm_y, utm_x, utm_zone_, utm_meridian_convergence_);
     utm_meridian_convergence_ *= NavsatConversions::RADIANS_PER_DEGREE;
 
-    ROS_INFO_STREAM("Datum (latitude, longitude, altitude) is (" << std::fixed << msg->latitude << ", " <<
-                    msg->longitude << ", " << msg->altitude << ")");
+    ROS_INFO_STREAM("Datum (latitude, longitude, altitude) is (" << std::fixed << latitude << ", " <<
+                    longitude << ", " << msg->altitude << ")");
     ROS_INFO_STREAM("Datum UTM coordinate is (" << std::fixed << utm_x << ", " << utm_y << ")");
 
     transform_utm_pose_.setOrigin(tf2::Vector3(utm_x, utm_y, msg->altitude));

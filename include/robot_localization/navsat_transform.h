@@ -276,9 +276,25 @@ class NavSatTransform
     //!
     tf2::Transform latest_utm_pose_;
 
+    //! @brief Latest GPS data, stored as UTM coords
+    //!
+    tf2::Transform latest_utm_pose_jump_corrected_;
+
     //! @brief Latest odometry pose data
     //!
     tf2::Transform latest_world_pose_;
+
+    //! @brief Holds the starting location on the utm grid
+    //!
+    std::array<double, 2> transform_utm_origin_;
+
+    //! @brief Holds the location where utm coordinates jump
+    //!
+    std::array<std::array<double, 2>, 2> jump_points_lat_long_;
+
+    //! @brief Holds the offset to apply to utm coordinates when you jump by one grid cell
+    //!
+    std::array<std::array<std::array<double, 2>, 2>, 2> jump_distances_lat_long_;
 
     //! @brief Holds the UTM pose that is used to compute the transform
     //!
