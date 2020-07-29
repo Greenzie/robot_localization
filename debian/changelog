@@ -1,3 +1,9 @@
+ros-melodic-robot-localization (102.6.6-bionic1) bionic; urgency=medium
+
+  * Updated parameters. Minor style fixes.
+
+ -- David Jensen <david@greenzie.com>  Wed, 29 Jul 2020 15:34:22 -0400
+
 ros-melodic-robot-localization (102.6.6-bionic0) bionic; urgency=medium
 
   * Added local cartesian option
