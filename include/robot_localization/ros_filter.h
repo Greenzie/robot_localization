@@ -449,6 +449,10 @@ template<class T> class RosFilter
     //!
     bool publishAcceleration_;
 
+    //! @brief Whether we publish rejected measurement topics
+    //!
+    bool publishRejectedMeasurements_;
+
     //! @brief Whether we publish the transform from the world_frame to the base_link_frame
     //!
     bool publishTransform_;
@@ -688,6 +692,10 @@ template<class T> class RosFilter
     //! @brief position publisher
     //!
     ros::Publisher positionPub_;
+
+    //! @brief rejected measurements topics publisher
+    //!
+    ros::Publisher rejectedMeasurementsPub_;
 
     //! @brief Subscribes to the control input topic
     //!

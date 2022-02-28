@@ -33,6 +33,7 @@
 #include "robot_localization/filter_base.h"
 #include "robot_localization/filter_common.h"
 
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -167,6 +168,11 @@ namespace RobotLocalization
     return debug_;
   }
 
+  bool FilterBase::getVerbose()
+  {
+    return verbose_;
+  }
+
   const Eigen::MatrixXd& FilterBase::getEstimateErrorCovariance()
   {
     return estimateErrorCovariance_;
@@ -204,7 +210,7 @@ namespace RobotLocalization
 
   void FilterBase::processMeasurement(const Measurement &measurement)
   {
-    FB_DEBUG("------ FilterBase::processMeasurement (" << measurement.topicName_ << ") ------\n");
+    FB_VERBOSE("------ FilterBase::processMeasurement (" << measurement.topicName_ << ") ------\n");
 
     double delta = 0.0;
 
@@ -216,7 +222,7 @@ namespace RobotLocalization
       // Determine how much time has passed since our last measurement
       delta = measurement.time_ - lastMeasurementTime_;
 
-      FB_DEBUG("Filter is already initialized. Carrying out predict/correct loop...\n"
+      FB_VERBOSE("Filter is already initialized. Carrying out predict/correct loop...\n"
                "Measurement time is " << std::setprecision(20) << measurement.time_ <<
                ", last measurement time is " << lastMeasurementTime_ << ", delta is " << delta << "\n");
 
@@ -235,7 +241,7 @@ namespace RobotLocalization
     }
     else
     {
-      FB_DEBUG("First measurement. Initializing filter.\n");
+      FB_VERBOSE("First measurement. Initializing filter.\n");
 
       // Initialize the filter, but only with the values we're using
       size_t measurementLength = measurement.updateVector_.size();
@@ -263,7 +269,7 @@ namespace RobotLocalization
       lastMeasurementTime_ = measurement.time_;
     }
 
-    FB_DEBUG("------ /FilterBase::processMeasurement (" << measurement.topicName_ << ") ------\n");
+    FB_VERBOSE("------ /FilterBase::processMeasurement (" << measurement.topicName_ << ") ------\n");
   }
 
   void FilterBase::setControl(const Eigen::VectorXd &control, const double controlTime)
@@ -305,6 +311,26 @@ namespace RobotLocalization
     }
   }
 
+  void FilterBase::setVerbose(const bool verbose, std::ostream *outStream)
+  {
+    if (verbose)
+    {
+      if (outStream != NULL)
+      {
+        debugStream_ = outStream;
+        verbose_ = true;
+      }
+      else
+      {
+        verbose_ = false;
+      }
+    }
+    else
+    {
+      verbose_ = false;
+    }
+  }
+
   void FilterBase::setUseDynamicProcessNoiseCovariance(const bool useDynamicProcessNoiseCovariance)
   {
     useDynamicProcessNoiseCovariance_ = useDynamicProcessNoiseCovariance;
@@ -341,12 +367,26 @@ namespace RobotLocalization
     // This handles issues with ROS time when use_sim_time is on and we're playing from bags.
     if (delta > 100000.0)
     {
-      FB_DEBUG("Delta was very large. Suspect playing from bag file. Setting to 0.01\n");
+      FB_VERBOSE("Delta was very large. Suspect playing from bag file. Setting to 0.01\n");
 
       delta = 0.01;
     }
   }
 
+  void FilterBase::getRejectedMeasurementTopics(std::vector<std::string> rejected)
+  {
+    // Clear return vector
+    rejected.clear();
+    // Copy to return vector
+    copy(rejectedMeasurementTopics_.begin(), rejectedMeasurementTopics_.end(), back_inserter(rejected));
+    // Clear internal vector
+    rejectedMeasurementTopics_.clear();
+  }
+
+  void FilterBase::setSaveRejectedMeasurementTopics(bool save)
+  {
+    saveRejectedMeasurementTopics_ = save;
+  }
 
   void FilterBase::prepareControl(const double referenceTime, const double predictionDelta)
   {
@@ -358,7 +398,7 @@ namespace RobotLocalization
 
       if (timedOut)
       {
-        FB_DEBUG("Control timed out. Reference time was " << referenceTime << ", latest control time was " <<
+        FB_VERBOSE("Control timed out. Reference time was " << referenceTime << ", latest control time was " <<
           latestControlTime_ << ", control timeout was " << controlTimeout_ << "\n");
       }
 

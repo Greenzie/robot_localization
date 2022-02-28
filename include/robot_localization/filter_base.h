@@ -192,6 +192,12 @@ class FilterBase
     //!
     bool getDebug();
 
+    //! @brief Gets the value of the verbose_ variable.
+    //!
+    //! @return True if in verbose mode, false otherwise
+    //!
+    bool getVerbose();
+
     //! @brief Gets the estimate error covariance
     //!
     //! @return A copy of the estimate error covariance matrix
@@ -282,6 +288,18 @@ class FilterBase
     //!
     void setDebug(const bool debug, std::ostream *outStream = NULL);
 
+    //! @brief Sets the filter into verbose mode
+    //!
+    //! NOTE: this will generates a lot of debug output to the provided stream.
+    //! The value must be a pointer to a valid ostream object.
+    //!
+    //! @param[in] verbose - Whether or not to place the filter in verbose mode
+    //! @param[in] outStream - If verbose is true, then this must have a valid pointer.
+    //! If the pointer is invalid, the filter will not enter verbose mode. If verbose is
+    //! false, outStream is ignored.
+    //!
+    void setVerbose(const bool verbose, std::ostream *outStream = NULL);
+
     //! @brief Enables dynamic process noise covariance calculation
     //!
     //! @param[in] dynamicProcessNoiseCovariance - Whether or not to compute dynamic process noise covariance matrices
@@ -329,6 +347,18 @@ class FilterBase
     //!
     void validateDelta(double &delta);
 
+    //! @brief Returns a copy of any rejected measurements topics and clears the internal vector
+    //!
+    //! @param[out] rejected - vector of rejected measurement topics since the last call
+    //!
+    void getRejectedMeasurementTopics(std::vector<std::string> rejected);
+
+    //! @brief Set whether to save rejected measurement topics
+    //!
+    //! @param[in] save - Whether to save rejected measurement topics
+    //!
+    void setSaveRejectedMeasurementTopics(bool save);
+
   protected:
     //! @brief Method for settings bounds on acceleration values derived from controls
     //! @param[in] state - The current state variable (e.g., linear X velocity)
@@ -342,7 +372,7 @@ class FilterBase
     inline double computeControlAcceleration(const double state, const double control, const double accelerationLimit,
       const double accelerationGain, const double decelerationLimit, const double decelerationGain)
     {
-      FB_DEBUG("---------- FilterBase::computeControlAcceleration ----------\n");
+      FB_VERBOSE("---------- FilterBase::computeControlAcceleration ----------\n");
 
       const double error = control - state;
       const bool sameSign = (::fabs(error) <= ::fabs(control) + 0.01);
@@ -359,7 +389,7 @@ class FilterBase
 
       const double finalAccel = std::min(std::max(gain * error, -limit), limit);
 
-      FB_DEBUG("Control value: " << control << "\n" <<
+      FB_VERBOSE("Control value: " << control << "\n" <<
                "State value: " << state << "\n" <<
                "Error: " << error << "\n" <<
                "Same sign: " << (sameSign ? "true" : "false") << "\n" <<
@@ -519,6 +549,16 @@ class FilterBase
     //!
     Eigen::MatrixXd transferFunctionJacobian_;
 
+    //! @brief Holds any rejected measurement topics since the last prediction update/ROS publish
+    //!
+    //! Enables other nodes/nodelets within ROS to capture rejected measurements
+    //!
+    std::vector<std::string> rejectedMeasurementTopics_;
+
+    //! @brief Whether the filter will be saving the rejected measurement topics.
+    //!
+    bool saveRejectedMeasurementTopics_;
+
     //! @brief Used for outputting debug messages
     //!
     std::ostream *debugStream_;
@@ -527,6 +567,10 @@ class FilterBase
     //! @brief Whether or not the filter is in debug mode
     //!
     bool debug_;
+
+    //! @brief Whether or not the filter is in verbose mode
+    //!
+    bool verbose_;
 };
 
 }  // namespace RobotLocalization
