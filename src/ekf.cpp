@@ -207,7 +207,7 @@ namespace RobotLocalization
     }
     else if (saveRejectedMeasurementTopics_)
     {
-      rejectedMeasurementTopics_.append(measurement.topicName_);
+      rejectedMeasurementTopics_.push_back(measurement.topicName_);
     }
   }
 

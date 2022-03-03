@@ -155,7 +155,7 @@ namespace RobotLocalization
     // Optional rejected measurements publisher
     if (publishRejectedMeasurements_)
     {
-      rejectedMeasurementsPub_ = nh_.advertise<std_msgs::string>("measurements/rejected", 20);
+      rejectedMeasurementsPub_ = nh_.advertise<std_msgs::String>("measurements/rejected", 20);
     }
 
     lastDiagTime_ = ros::Time::now();
@@ -1873,7 +1873,7 @@ namespace RobotLocalization
                     stream.str(),
                     false);
 
-      RF_DERF_VERBOSEBUG("Message is too old. Last message time for " << topicName << " is "
+      RF_VERBOSE("Message is too old. Last message time for " << topicName << " is "
                << lastMessageTimes_[topicName] << ", current message time is "
                << msg->header.stamp << ".\n");
     }
@@ -2043,7 +2043,7 @@ namespace RobotLocalization
       filter_.getRejectedMeasurementTopics(rejectedMsgs);
       for(auto msg_topic : rejectedMsgs)
       {
-        std_msgs::string sendMsg;
+        std_msgs::String sendMsg;
         sendMsg.data = msg_topic;
         rejectedMeasurementsPub_.publish(sendMsg);
       }
