@@ -190,6 +190,10 @@ When the state estimation nodes publish the state at time `t`, but then receive 
 ^^^^^^^^^^^^^^^^^^
 If true, the state estimation node will publish diagnostic messages to the ``/diagnostics`` topic. This is useful for debugging your configuration and sensor data.
 
+~publish_rejected_measurements:
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+If true, ROS messages will be published for any rejected measurements listing the rejected topic
+
 Advanced Parameters
 -------------------
 
