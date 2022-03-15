@@ -100,6 +100,37 @@ struct CallbackData
   double rejectionThreshold_;
 };
 
+struct ImuDynamicCorrectionData
+{
+  ImuDynamicCorrectionData(const double min_speed = 0.0,
+                           const double max_yaw_variance = 3.14159265359 * 3.14159265359,
+                           const double alpha = 0.0) :
+    last_state_received_s_(-1.0),
+    last_yaw_estimate_(0.0),
+    last_yaw_variance_(3.14159265359 * 3.14159265359),  // Initialized to unknown yaw variance
+    yaw_offset_(0.0),
+    yaw_offset_variance_(0.0),
+    last_speed_(0.0),
+    min_speed_(min_speed),
+    max_yaw_variance_(max_yaw_variance),
+    alpha_(alpha),
+    yaw_offset_has_been_set_(false)
+  {
+
+  }
+
+  double last_state_received_s_;
+  double last_yaw_estimate_;
+  double last_yaw_variance_;
+  double yaw_offset_;
+  double yaw_offset_variance_;
+  double last_speed_;
+  double min_speed_;
+  double max_yaw_variance_;
+  double alpha_;
+  bool yaw_offset_has_been_set_;
+};
+
 typedef std::priority_queue<MeasurementPtr, std::vector<MeasurementPtr>, Measurement> MeasurementQueue;
 typedef std::deque<MeasurementPtr> MeasurementHistoryDeque;
 typedef std::deque<FilterStatePtr> FilterStateHistoryDeque;
@@ -218,6 +249,18 @@ template<class T> class RosFilter
     void imuCallback(const sensor_msgs::Imu::ConstPtr &msg, const std::string &topicName,
       const CallbackData &poseCallbackData, const CallbackData &twistCallbackData,
       const CallbackData &accelCallbackData);
+    
+    //! @brief Callback method for receiving all IMU dynamic correction data
+    //! @param[in] msg - The ROS IMU message to take in.
+    //! @param[in] topicName - The topic name for the IMU message (only used for debug output)
+    //! @param[in] poseCallbackData - Relevant static callback data for orientation variables
+    //! @param[in] twistCallbackData - Relevant static callback data for angular velocity variables
+    //! @param[in] accelCallbackData - Relevant static callback data for linear acceleration variables
+    //!
+    //! This method separates out the orientation, angular velocity, and linear acceleration data and
+    //! passed each on to its respective callback.
+    //!
+    void imuDynamicCorrectionCallback(const nav_msgs::Odometry::ConstPtr &msg, const std::string &topicName);
 
     //! @brief Processes all measurements in the measurement queue, in temporal order
     //!
@@ -604,6 +647,10 @@ template<class T> class RosFilter
     //! The values are treated as static and always reported (i.e., this object is never cleared)
     //!
     std::map<std::string, std::string> staticDiagnostics_;
+
+    //! @brief Thisobject holds dynamic correction information, if enabled, per IMU input
+    //!
+    std::map<std::string, ImuDynamicCorrectionData> imuDynamicCorrectionData_;
 
     //! @brief The most recent control input
     //!
