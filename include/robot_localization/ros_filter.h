@@ -102,12 +102,13 @@ struct CallbackData
 
 struct ImuDynamicCorrectionData
 {
+  // Default max yaw variance is unknown (+/- 180 deg=pi rad ^2)
   ImuDynamicCorrectionData(const double min_speed = 0.0,
-                           const double max_yaw_variance = 3.14159265359 * 3.14159265359,
+                           const double max_yaw_variance = M_PI * M_PI,
                            const double alpha = 0.0) :
     last_state_received_s_(-1.0),
     last_yaw_estimate_(0.0),
-    last_yaw_variance_(3.14159265359 * 3.14159265359),  // Initialized to unknown yaw variance
+    last_yaw_variance_(M_PI * M_PI),  // Initialized to unknown yaw variance
     yaw_offset_(0.0),
     yaw_offset_variance_(0.0),
     last_speed_(0.0),

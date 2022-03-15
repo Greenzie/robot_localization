@@ -1549,7 +1549,7 @@ namespace RobotLocalization
               double min_speed = 0.0;  // Accept all by default
               nhLocal_.param(correction_min_speed, min_speed, min_speed);
               std::string correction_max_variance = dynamic_magnetometer_correction + std::string("_max_variance");
-              double max_variance = 4.0 * 3.14159265359 * 3.14159265359;  // Accept unknown angles by default
+              double max_variance = M_PI * M_PI;  // Accept unknown angles by default
               nhLocal_.param(correction_max_variance, max_variance, max_variance);
 
               std::string correction_alpha = dynamic_magnetometer_correction + std::string("_alpha");
