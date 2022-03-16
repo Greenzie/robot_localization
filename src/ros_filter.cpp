@@ -1553,7 +1553,7 @@ namespace RobotLocalization
               nhLocal_.param(correction_max_variance, max_variance, max_variance);
 
               std::string correction_alpha = dynamic_magnetometer_correction + std::string("_alpha");
-              double alpha = 0.0;  // Fu1l reliance on new measurement by default
+              double alpha = 0.0;  // Full reliance on new measurement by default
               nhLocal_.param(correction_alpha, alpha, alpha);
 
               // Add the data for handling the dynamic correction
