@@ -252,14 +252,10 @@ template<class T> class RosFilter
       const CallbackData &accelCallbackData);
     
     //! @brief Callback method for receiving all IMU dynamic correction data
-    //! @param[in] msg - The ROS IMU message to take in.
-    //! @param[in] topicName - The topic name for the IMU message (only used for debug output)
-    //! @param[in] poseCallbackData - Relevant static callback data for orientation variables
-    //! @param[in] twistCallbackData - Relevant static callback data for angular velocity variables
-    //! @param[in] accelCallbackData - Relevant static callback data for linear acceleration variables
+    //! @param[in] msg - The ROS odometry message to take in.
+    //! @param[in] topicName - The topic name for the IMU message that is being dynamically corrected.
     //!
-    //! This method separates out the orientation, angular velocity, and linear acceleration data and
-    //! passed each on to its respective callback.
+    //! This method receives odometry from one EKF in order to dynamically correct orientation input on another EKF.
     //!
     void imuDynamicCorrectionCallback(const nav_msgs::Odometry::ConstPtr &msg, const std::string &topicName);
 

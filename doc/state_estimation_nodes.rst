@@ -154,7 +154,7 @@ If fusing accelerometer data from IMUs, this parameter determines whether or not
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 If using data from one EKF to correct the magnetometer input on another EKF, this set of parameters will define that.
 imuN_dynamic_magnetometer_correction: The topic that the EKF should listen to for data from the uncorrected EKF
-imuN_dynamic_magnetometer_correction_min_speed: Minimum speed for dat to be used
+imuN_dynamic_magnetometer_correction_min_speed: Minimum speed for data to be used
 imuN_dynamic_magnetometer_correction_max_variance: Maximum variance for data to be used
 imuN_dynamic_magnetometer_correction_alpha: An alpha-beta filter. The alpha term (defined here) is the reliance on the previous measurement. This allows a user to filter out higher frequency changes.
 
