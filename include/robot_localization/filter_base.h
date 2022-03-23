@@ -286,7 +286,7 @@ class FilterBase
     //! If the pointer is invalid, the filter will not enter debug mode. If debug is
     //! false, outStream is ignored.
     //!
-    void setDebug(const bool debug, std::ostream *outStream = NULL);
+    void setDebug(const bool debug, std::ostream *outStream = nullptr);
 
     //! @brief Sets the filter into verbose mode
     //!
@@ -298,7 +298,7 @@ class FilterBase
     //! If the pointer is invalid, the filter will not enter verbose mode. If verbose is
     //! false, outStream is ignored.
     //!
-    void setVerbose(const bool verbose, std::ostream *outStream = NULL);
+    void setVerbose(const bool verbose, std::ostream *outStream = nullptr);
 
     //! @brief Enables dynamic process noise covariance calculation
     //!
