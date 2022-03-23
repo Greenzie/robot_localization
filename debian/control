@@ -1,0 +1,12 @@
+Source: ros-noetic-robot-localization
+Section: misc
+Priority: optional
+Maintainer: Tom Moore <ayrton04@gmail.com>
+Build-Depends: debhelper (>= 9.0.0), libeigen3-dev, libgeographic-dev, libyaml-cpp-dev, python3-catkin-pkg, ros-noetic-catkin, ros-noetic-cmake-modules, ros-noetic-diagnostic-msgs, ros-noetic-diagnostic-updater, ros-noetic-eigen-conversions, ros-noetic-geographic-msgs, ros-noetic-geometry-msgs, ros-noetic-message-filters, ros-noetic-message-generation, ros-noetic-nav-msgs, ros-noetic-nodelet, ros-noetic-rosbag, ros-noetic-roscpp, ros-noetic-roslint, ros-noetic-rostest, ros-noetic-rosunit, ros-noetic-sensor-msgs, ros-noetic-std-msgs, ros-noetic-std-srvs, ros-noetic-tf2, ros-noetic-tf2-geometry-msgs, ros-noetic-tf2-ros, ros-noetic-xmlrpcpp
+Homepage: http://ros.org/wiki/robot_localization
+Standards-Version: 3.9.2
+
+Package: ros-noetic-robot-localization
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libeigen3-dev, libyaml-cpp-dev, ros-noetic-cmake-modules, ros-noetic-diagnostic-msgs, ros-noetic-diagnostic-updater, ros-noetic-eigen-conversions, ros-noetic-geographic-msgs, ros-noetic-geometry-msgs, ros-noetic-message-filters, ros-noetic-message-runtime, ros-noetic-nav-msgs, ros-noetic-nodelet, ros-noetic-roscpp, ros-noetic-sensor-msgs, ros-noetic-std-msgs, ros-noetic-std-srvs, ros-noetic-tf2, ros-noetic-tf2-geometry-msgs, ros-noetic-tf2-ros, ros-noetic-xmlrpcpp
+Description: Provides nonlinear state estimation through sensor fusion of an abritrary number of sensors.

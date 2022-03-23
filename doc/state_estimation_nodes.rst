@@ -150,6 +150,14 @@ If fusing accelerometer data from IMUs, this parameter determines whether or not
 
 .. note:: This assumes that the IMU that is providing the acceleration data is also producing an absolute orientation. The orientation data is required to correctly remove gravitational acceleration.
 
+~imuN_dynamic_magnetometer_correction
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+If using data from one EKF to correct the magnetometer input on another EKF, this set of parameters will define that.
+imuN_dynamic_magnetometer_correction: The topic that the EKF should listen to for data from the uncorrected EKF
+imuN_dynamic_magnetometer_correction_min_speed: Minimum speed for data to be used
+imuN_dynamic_magnetometer_correction_max_variance: Maximum variance for data to be used
+imuN_dynamic_magnetometer_correction_alpha: An alpha-beta filter. The alpha term (defined here) is the reliance on the previous measurement. This allows a user to filter out higher frequency changes.
+
 ~gravitational_acceleration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 If ``imuN_remove_gravitational_acceleration`` is set to ``true``, then this parameter determines the acceleration in Z due to gravity that will be removed from the IMU's linear acceleration data. Default is 9.80665 (m/s^2).
@@ -181,6 +189,10 @@ When the state estimation nodes publish the state at time `t`, but then receive 
 ~print_diagnostics
 ^^^^^^^^^^^^^^^^^^
 If true, the state estimation node will publish diagnostic messages to the ``/diagnostics`` topic. This is useful for debugging your configuration and sensor data.
+
+~publish_rejected_measurements:
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+If true, ROS messages will be published for any rejected measurements listing the rejected topic
 
 Advanced Parameters
 -------------------

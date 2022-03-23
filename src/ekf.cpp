@@ -74,11 +74,11 @@ namespace RobotLocalization
         // Handle nan and inf values in measurements
         if (std::isnan(measurement.measurement_(i)))
         {
-          FB_DEBUG("Value at index " << i << " was nan. Excluding from update.\n");
+          FB_VERBOSE("Value at index " << i << " was nan. Excluding from update.\n");
         }
         else if (std::isinf(measurement.measurement_(i)))
         {
-          FB_DEBUG("Value at index " << i << " was inf. Excluding from update.\n");
+          FB_VERBOSE("Value at index " << i << " was inf. Excluding from update.\n");
         }
         else
         {
@@ -122,7 +122,7 @@ namespace RobotLocalization
       // the absolute value.
       if (measurementCovarianceSubset(i, i) < 0)
       {
-        FB_DEBUG("WARNING: Negative covariance for index " << i <<
+        FB_VERBOSE("WARNING: Negative covariance for index " << i <<
                  " of measurement (value is" << measurementCovarianceSubset(i, i) <<
                  "). Using absolute value...\n");
 
@@ -137,7 +137,7 @@ namespace RobotLocalization
       // amount in that case.
       if (measurementCovarianceSubset(i, i) < 1e-9)
       {
-        FB_DEBUG("WARNING: measurement had very small error covariance for index " << updateIndices[i] <<
+        FB_VERBOSE("WARNING: measurement had very small error covariance for index " << updateIndices[i] <<
                  ". Adding some noise to maintain filter stability.\n");
 
         measurementCovarianceSubset(i, i) = 1e-9;
@@ -151,7 +151,7 @@ namespace RobotLocalization
       stateToMeasurementSubset(i, updateIndices[i]) = 1;
     }
 
-    FB_DEBUG("Current state subset is:\n" << stateSubset <<
+    FB_VERBOSE("Current state subset is:\n" << stateSubset <<
              "\nMeasurement subset is:\n" << measurementSubset <<
              "\nMeasurement covariance subset is:\n" << measurementCovarianceSubset <<
              "\nState-to-measurement subset is:\n" << stateToMeasurementSubset << "\n");
@@ -204,6 +204,10 @@ namespace RobotLocalization
                "\nCorrected full state is:\n" << state_ <<
                "\nCorrected full estimate error covariance is:\n" << estimateErrorCovariance_ <<
                "\n\n---------------------- /Ekf::correct ----------------------\n");
+    }
+    else if (saveRejectedMeasurementTopics_)
+    {
+      rejectedMeasurementTopics_.push_back(measurement.topicName_);
     }
   }
 
@@ -342,7 +346,7 @@ namespace RobotLocalization
     transferFunctionJacobian_(StateMemberYaw, StateMemberRoll) = dFY_dR;
     transferFunctionJacobian_(StateMemberYaw, StateMemberPitch) = dFY_dP;
 
-    FB_DEBUG("Transfer function is:\n" << transferFunction_ <<
+    FB_VERBOSE("Transfer function is:\n" << transferFunction_ <<
              "\nTransfer function Jacobian is:\n" << transferFunctionJacobian_ <<
              "\nProcess noise covariance is:\n" << processNoiseCovariance_ <<
              "\nCurrent state is:\n" << state_ << "\n");

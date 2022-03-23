@@ -40,7 +40,8 @@
 #include <string>
 #include <vector>
 
-#define FB_DEBUG(msg) if (getDebug()) { *debugStream_ << msg; }
+#define FB_DEBUG(msg) if (getDebug() || getVerbose()) { *debugStream_ << msg; }
+#define FB_VERBOSE(msg) if (getVerbose()) { *debugStream_ << msg; }
 
 // Handy methods for debug output
 std::ostream& operator<<(std::ostream& os, const Eigen::MatrixXd &mat);
