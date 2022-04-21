@@ -1,3 +1,9 @@
+ros-noetic-robot-localization (102.7.3-focal2) focal; urgency=medium
+
+  * Fixed issues with pass-by-reference in topic rejection logic.
+
+ -- Joel Dunham <joel.ph.dunham@gmail.com>  Thurs, 21 Apr 2022 13:25:14 -0000
+
 ros-noetic-robot-localization (102.7.3-focal1) focal; urgency=medium
 
   * Fixed issues with alpha-beta filter for dynamic yaw correction.

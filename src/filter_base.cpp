@@ -373,7 +373,7 @@ namespace RobotLocalization
     }
   }
 
-  void FilterBase::getRejectedMeasurementTopics(std::vector<std::string> rejected)
+  void FilterBase::getRejectedMeasurementTopics(std::vector<std::string>& rejected)
   {
     // Clear return vector
     rejected.clear();

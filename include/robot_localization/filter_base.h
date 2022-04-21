@@ -351,7 +351,7 @@ class FilterBase
     //!
     //! @param[out] rejected - vector of rejected measurement topics since the last call
     //!
-    void getRejectedMeasurementTopics(std::vector<std::string> rejected);
+    void getRejectedMeasurementTopics(std::vector<std::string>& rejected);
 
     //! @brief Set whether to save rejected measurement topics
     //!
