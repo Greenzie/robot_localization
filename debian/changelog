@@ -1,20 +1,8 @@
 ros-noetic-robot-localization (102.7.3-focal2) focal; urgency=medium
 
-  * Fixed issues with pass-by-reference in topic rejection logic.
+  * Moved to noetic branch, added output and dynamic orientation correction.
 
- -- Joel Dunham <joel.ph.dunham@gmail.com>  Thurs, 21 Apr 2022 13:25:14 -0000
-
-ros-noetic-robot-localization (102.7.3-focal1) focal; urgency=medium
-
-  * Fixed issues with alpha-beta filter for dynamic yaw correction.
-
- -- Joel Dunham <joel.ph.dunham@gmail.com>  Thurs, 21 Apr 2022 13:14:22 -0000
-
-ros-noetic-robot-localization (102.7.3-focal0) focal; urgency=medium
-
-  * Moved to noetic branch. Added additional output and dynamic orientation correction.
-
- -- Joel Dunham <joel.ph.dunham@gmail.com>  Thurs, 17 Mar 2022 01:38:22 -0000
+ -- chacalnoir <joel.ph.dunham@gmail.com>  Thu, 21 Apr 2022 09:38:48 -0400
 
 ros-melodic-robot-localization (102.6.6-bionic1) bionic; urgency=medium
 
