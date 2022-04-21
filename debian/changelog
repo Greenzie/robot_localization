@@ -1,4 +1,10 @@
-ros-noetic-robot-localization (2.7.3-focal) focal; urgency=medium
+ros-noetic-robot-localization (102.7.3-focal1) focal; urgency=medium
+
+  * Fixed issues with alpha-beta filter for dynamic yaw correction.
+
+ -- Joel Dunham <joel.ph.dunham@gmail.com>  Thurs, 21 Apr 2022 13:14:22 -0000
+
+ros-noetic-robot-localization (102.7.3-focal0) focal; urgency=medium
 
   * Moved to noetic branch. Added additional output and dynamic orientation correction.
 

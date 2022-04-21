@@ -3038,10 +3038,41 @@ namespace RobotLocalization
               (imuDynamicCorrectionData_[topicName].last_speed_ > imuDynamicCorrectionData_[topicName].min_speed_))
             {
               // Should be subtracted (-) since the offset is a difference.
-              imuDynamicCorrectionData_[topicName].yaw_offset_ = imuDynamicCorrectionData_[topicName].last_yaw_estimate_ - yaw;
-              // Should be added (+) since these are variances
-              imuDynamicCorrectionData_[topicName].yaw_offset_variance_ =
-                measurementCovariance(POSE_SIZE - 1, POSE_SIZE - 1) + imuDynamicCorrectionData_[topicName].last_yaw_variance_;
+              // The alpha-beta filter is rather special here, as it has to account for a few issues. First, how do we initialize it?
+              //  If initialized to zero, that means the yaw offset is assumed to be zero to start, with the resulting slow adjustments to
+              //  the filtered correction. The problem is that it's not zero. Without a better set of information (e.g. stored data from
+              //  a previous run), the best way is to initialize it with a jump to the first calculation, then run the filter.
+              // Because the alpha-beta filter is maintaining history, angle wrapping is a problem if not handled.
+              //  To correct this, we will always keep the offset in the range [-PI, PI]. The actual yaw angle
+              //  wrapping is handled by the Kalman filter. The offset angle wrapping needs to be handled here. The additional step is what
+              //  happens when the angle steps over the boundary (e.g. from -(PI-0.0001) to (PI-0.0001)). That case also has to be handled.
+              //  We could shift the old yaw offset to outside the boundary on the same side as the new yaw offset. That's a bit of work
+              //  for a corner case, so we will instead just skip the alpha-beta filter under those conditions, then running the
+              //  alpha-beta filter again.
+              double yaw_offset = FilterUtilities::clampRotation(imuDynamicCorrectionData_[topicName].last_yaw_estimate_ - yaw);
+              if((::fabs(imuDynamicCorrectionData_[topicName].yaw_offset_) < 1e-9) ||
+                (::fabs(yaw_offset - imuDynamicCorrectionData_[topicName].yaw_offset_) > PI))
+              {
+                // Has not been initialized
+                imuDynamicCorrectionData_[topicName].yaw_offset_ = yaw_offset;
+                // Should be added (+) since these are variances
+                imuDynamicCorrectionData_[topicName].yaw_offset_variance_ =
+                  measurementCovariance(POSE_SIZE - 1, POSE_SIZE - 1) + imuDynamicCorrectionData_[topicName].last_yaw_variance_;
+              }
+              else
+              {
+                // Has been initialized - use the alpha-beta filter
+                imuDynamicCorrectionData_[topicName].yaw_offset_ =
+                  imuDynamicCorrectionData_[topicName].alpha_ * imuDynamicCorrectionData_[topicName].yaw_offset_ +
+                  (1.0 - imuDynamicCorrectionData_[topicName].alpha_) * yaw_offset;
+                // Should be added (+) since these are variances.
+                // Note that the variance is not an actual angle, so angle wrapping is not required.
+                imuDynamicCorrectionData_[topicName].yaw_offset_variance_ =
+                  imuDynamicCorrectionData_[topicName].alpha_ *
+                  imuDynamicCorrectionData_[topicName].yaw_offset_variance_ +
+                  (1.0 - imuDynamicCorrectionData_[topicName].alpha_) *
+                  (imuDynamicCorrectionData_[topicName].last_yaw_variance_ + measurementCovariance(POSE_SIZE - 1, POSE_SIZE - 1));
+              }
               // Calculated at least once
               imuDynamicCorrectionData_[topicName].yaw_offset_has_been_set_ = true;
               std::string debug_info;
