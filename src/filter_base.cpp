@@ -67,7 +67,8 @@ namespace RobotLocalization
     transferFunction_(STATE_SIZE, STATE_SIZE),
     transferFunctionJacobian_(STATE_SIZE, STATE_SIZE),
     debugStream_(NULL),
-    debug_(false)
+    debug_(false),
+    verbose_(false)
   {
     reset();
   }
