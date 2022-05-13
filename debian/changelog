@@ -1,3 +1,9 @@
+ros-noetic-robot-localization (102.7.3-focal3) focal; urgency=medium
+
+  * Initialize verbose flag to avoid writing to unopened ostream
+
+ -- daniel <daniel@daniel.greenzievpn>  Fri, 13 May 2022 09:47:33 -0400
+
 ros-noetic-robot-localization (102.7.3-focal2) focal; urgency=medium
 
   * Moved to noetic branch, added output and dynamic orientation correction.
