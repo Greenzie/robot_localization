@@ -1,3 +1,9 @@
+ros-noetic-robot-localization (102.7.3-focal4) focal; urgency=medium
+
+  * Added bad data check for initialization
+
+ -- chacalnoir <joel.ph.dunham@gmail.com>  Wed, 25 May 2022 06:38:52 -0400
+
 ros-noetic-robot-localization (102.7.3-focal3) focal; urgency=medium
 
   * Initialize verbose flag to avoid writing to unopened ostream
