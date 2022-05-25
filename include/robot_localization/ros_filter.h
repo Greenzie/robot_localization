@@ -82,13 +82,15 @@ struct CallbackData
                const int updateSum,
                const bool differential,
                const bool relative,
-               const double rejectionThreshold) :
+               const double rejectionThreshold,
+               const double rejectionThresholdInit) :
     topicName_(topicName),
     updateVector_(updateVector),
     updateSum_(updateSum),
     differential_(differential),
     relative_(relative),
-    rejectionThreshold_(rejectionThreshold)
+    rejectionThreshold_(rejectionThreshold),
+    rejectionThresholdInit_(rejectionThresholdInit)
   {
   }
 
@@ -98,6 +100,7 @@ struct CallbackData
   bool differential_;
   bool relative_;
   double rejectionThreshold_;
+  double rejectionThresholdInit_;
 };
 
 struct ImuDynamicCorrectionData
@@ -203,6 +206,7 @@ template<class T> class RosFilter
     //! @param[in] measurementCovariance - The covariance of the measurement
     //! @param[in] updateVector - The boolean vector that specifies which variables to update from this measurement
     //! @param[in] mahalanobisThresh - Threshold, expressed as a Mahalanobis distance, for outlier rejection
+    //! @param[in] mahalanobisThreshInit - Threshold, expressed as a Mahalanobis distance, for initialization data rejection
     //! @param[in] time - The time of arrival (in seconds)
     //!
     void enqueueMeasurement(const std::string &topicName,
@@ -210,6 +214,7 @@ template<class T> class RosFilter
                             const Eigen::MatrixXd &measurementCovariance,
                             const std::vector<int> &updateVector,
                             const double mahalanobisThresh,
+                            const double mahalanobisThreshInit,
                             const ros::Time &time);
 
     //! @brief Method for zeroing out 3D variables within measurements

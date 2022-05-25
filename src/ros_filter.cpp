@@ -258,6 +258,7 @@ namespace RobotLocalization
                            measurementCovariance,
                            updateVectorCorrected,
                            callbackData.rejectionThreshold_,
+                           callbackData.rejectionThresholdInit_,
                            msg->header.stamp);
 
         RF_VERBOSE("Enqueued new measurement for " << topicName << "_acceleration\n");
@@ -334,6 +335,7 @@ namespace RobotLocalization
                                         const Eigen::MatrixXd &measurementCovariance,
                                         const std::vector<int> &updateVector,
                                         const double mahalanobisThresh,
+                                        const double mahalanobisThreshInit,
                                         const ros::Time &time)
   {
     MeasurementPtr meas = MeasurementPtr(new Measurement());
@@ -344,6 +346,7 @@ namespace RobotLocalization
     meas->updateVector_ = updateVector;
     meas->time_ = time.toSec();
     meas->mahalanobisThresh_ = mahalanobisThresh;
+    meas->mahalanobisThreshInit_ = mahalanobisThreshInit;
     meas->latestControl_ = latestControl_;
     meas->latestControlTime_ = latestControlTime_.toSec();
     measurementQueue_.push(meas);
@@ -1117,11 +1120,19 @@ namespace RobotLocalization
         nhLocal_.param(odomTopicName + std::string("_pose_rejection_threshold"),
                        poseMahalanobisThresh,
                        std::numeric_limits<double>::max());
+        double poseMahalanobisThreshInit;
+        nhLocal_.param(odomTopicName + std::string("_pose_rejection_threshold_initialize"),
+                       poseMahalanobisThreshInit,
+                       std::numeric_limits<double>::max());
 
         // Check for twist rejection threshold
         double twistMahalanobisThresh;
         nhLocal_.param(odomTopicName + std::string("_twist_rejection_threshold"),
                        twistMahalanobisThresh,
+                       std::numeric_limits<double>::max());
+        double twistMahalanobisThreshInit;
+        nhLocal_.param(odomTopicName + std::string("_twist_rejection_threshold_initialize"),
+                       twistMahalanobisThreshInit,
                        std::numeric_limits<double>::max());
 
         // Now pull in its boolean update vector configuration. Create separate vectors for pose
@@ -1139,9 +1150,9 @@ namespace RobotLocalization
         nhLocal_.param(odomTopicName + "_queue_size", odomQueueSize, 1);
 
         const CallbackData poseCallbackData(odomTopicName + "_pose", poseUpdateVec, poseUpdateSum, differential,
-          relative, poseMahalanobisThresh);
+          relative, poseMahalanobisThresh, poseMahalanobisThreshInit);
         const CallbackData twistCallbackData(odomTopicName + "_twist", twistUpdateVec, twistUpdateSum, false, false,
-          twistMahalanobisThresh);
+          twistMahalanobisThresh, twistMahalanobisThresh);
 
         bool nodelayOdom = false;
         nhLocal_.param(odomTopicName + "_nodelay", nodelayOdom, false);
@@ -1243,6 +1254,10 @@ namespace RobotLocalization
         nhLocal_.param(poseTopicName + std::string("_rejection_threshold"),
                        poseMahalanobisThresh,
                        std::numeric_limits<double>::max());
+        double poseMahalanobisThreshInit;
+        nhLocal_.param(poseTopicName + std::string("_rejection_threshold_initialize"),
+                       poseMahalanobisThreshInit,
+                       std::numeric_limits<double>::max());
 
         int poseQueueSize = 1;
         nhLocal_.param(poseTopicName + "_queue_size", poseQueueSize, 1);
@@ -1264,7 +1279,7 @@ namespace RobotLocalization
         if (poseUpdateSum > 0)
         {
           const CallbackData callbackData(poseTopicName, poseUpdateVec, poseUpdateSum, differential, relative,
-            poseMahalanobisThresh);
+            poseMahalanobisThresh, poseMahalanobisThreshInit);
 
           topicSubs_.push_back(
             nh_.subscribe<geometry_msgs::PoseWithCovarianceStamped>(poseTopic, poseQueueSize,
@@ -1325,6 +1340,10 @@ namespace RobotLocalization
         nhLocal_.param(twistTopicName + std::string("_rejection_threshold"),
                        twistMahalanobisThresh,
                        std::numeric_limits<double>::max());
+        double twistMahalanobisThreshInit;
+        nhLocal_.param(twistTopicName + std::string("_rejection_threshold_initialize"),
+                       twistMahalanobisThreshInit,
+                       std::numeric_limits<double>::max());
 
         int twistQueueSize = 1;
         nhLocal_.param(twistTopicName + "_queue_size", twistQueueSize, 1);
@@ -1341,7 +1360,7 @@ namespace RobotLocalization
         if (twistUpdateSum > 0)
         {
           const CallbackData callbackData(twistTopicName, twistUpdateVec, twistUpdateSum, false, false,
-            twistMahalanobisThresh);
+            twistMahalanobisThresh, twistMahalanobisThreshInit);
 
           topicSubs_.push_back(
             nh_.subscribe<geometry_msgs::TwistWithCovarianceStamped>(twistTopic, twistQueueSize,
@@ -1404,17 +1423,29 @@ namespace RobotLocalization
         nhLocal_.param(imuTopicName + std::string("_pose_rejection_threshold"),
                        poseMahalanobisThresh,
                        std::numeric_limits<double>::max());
+        double poseMahalanobisThreshInit;
+        nhLocal_.param(imuTopicName + std::string("_pose_rejection_threshold_initialize"),
+                       poseMahalanobisThreshInit,
+                       std::numeric_limits<double>::max());
 
         // Check for angular velocity rejection threshold
         double twistMahalanobisThresh;
         std::string imuTwistRejectionName =
           imuTopicName + std::string("_twist_rejection_threshold");
         nhLocal_.param(imuTwistRejectionName, twistMahalanobisThresh, std::numeric_limits<double>::max());
+        double twistMahalanobisThreshInit;
+        imuTwistRejectionName =
+          imuTopicName + std::string("_twist_rejection_threshold_initialize");
+        nhLocal_.param(imuTwistRejectionName, twistMahalanobisThreshInit, std::numeric_limits<double>::max());
 
         // Check for acceleration rejection threshold
         double accelMahalanobisThresh;
         nhLocal_.param(imuTopicName + std::string("_linear_acceleration_rejection_threshold"),
                        accelMahalanobisThresh,
+                       std::numeric_limits<double>::max());
+        double accelMahalanobisThreshInit;
+        nhLocal_.param(imuTopicName + std::string("_linear_acceleration_rejection_threshold_initialize"),
+                       accelMahalanobisThreshInit,
                        std::numeric_limits<double>::max());
 
         bool removeGravAcc = false;
@@ -1507,11 +1538,11 @@ namespace RobotLocalization
         if (poseUpdateSum + twistUpdateSum + accelUpdateSum > 0)
         {
           const CallbackData poseCallbackData(imuTopicName + "_pose", poseUpdateVec, poseUpdateSum, differential,
-            relative, poseMahalanobisThresh);
+            relative, poseMahalanobisThresh, poseMahalanobisThreshInit);
           const CallbackData twistCallbackData(imuTopicName + "_twist", twistUpdateVec, twistUpdateSum, differential,
-            relative, twistMahalanobisThresh);
+            relative, twistMahalanobisThresh, twistMahalanobisThreshInit);
           const CallbackData accelCallbackData(imuTopicName + "_acceleration", accelUpdateVec, accelUpdateSum,
-            differential, relative, accelMahalanobisThresh);
+            differential, relative, accelMahalanobisThresh, accelMahalanobisThreshInit);
 
           topicSubs_.push_back(
             nh_.subscribe<sensor_msgs::Imu>(imuTopic, imuQueueSize,
@@ -1899,6 +1930,7 @@ namespace RobotLocalization
                            measurementCovariance,
                            updateVectorCorrected,
                            callbackData.rejectionThreshold_,
+                           callbackData.rejectionThresholdInit_,
                            msg->header.stamp);
 
         RF_VERBOSE("Enqueued new measurement for " << topicName << "\n");
@@ -2253,6 +2285,7 @@ namespace RobotLocalization
                            measurementCovariance,
                            updateVectorCorrected,
                            callbackData.rejectionThreshold_,
+                           callbackData.rejectionThresholdInit_,
                            msg->header.stamp);
 
         RF_VERBOSE("Enqueued new measurement for " << topicName << "_twist\n");

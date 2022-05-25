@@ -76,13 +76,11 @@ namespace RobotLocalization
   {
   }
 
-  void Ukf::correct(const Measurement &measurement)
+  void Ukf::prepareCorrect(const Measurement &measurement, const std::vector<size_t> &updateIndices,
+                           Eigen::VectorXd &innovationSubset, Eigen::MatrixXd &measurementCovarianceSubset,
+                           Eigen::MatrixXd &kalmanGainSubset, Eigen::MatrixXd &invInnovCov,
+                           Eigen::MatrixXd &predictedMeasCovar)
   {
-    FB_DEBUG("---------------------- Ukf::correct ----------------------\n" <<
-             "State is:\n" << state_ <<
-             "\nMeasurement is:\n" << measurement.measurement_ <<
-             "\nMeasurement covariance is:\n" << measurement.covariance_ << "\n");
-
     // In our implementation, it may be that after we call predict once, we call correct
     // several times in succession (multiple measurements with different time stamps). In
     // that event, the sigma points need to be updated to reflect the current state.
@@ -95,28 +93,6 @@ namespace RobotLocalization
     // We don't want to update everything, so we need to build matrices that only update
     // the measured parts of our state vector
 
-    // First, determine how many state vector values we're updating
-    std::vector<size_t> updateIndices;
-    for (size_t i = 0; i < measurement.updateVector_.size(); ++i)
-    {
-      if (measurement.updateVector_[i])
-      {
-        // Handle nan and inf values in measurements
-        if (std::isnan(measurement.measurement_(i)))
-        {
-          FB_VERBOSE("Value at index " << i << " was nan. Excluding from update.\n");
-        }
-        else if (std::isinf(measurement.measurement_(i)))
-        {
-          FB_VERBOSE("Value at index " << i << " was inf. Excluding from update.\n");
-        }
-        else
-        {
-          updateIndices.push_back(i);
-        }
-      }
-    }
-
     FB_DEBUG("Update indices are:\n" << updateIndices << "\n");
 
     size_t updateSize = updateIndices.size();
@@ -124,13 +100,9 @@ namespace RobotLocalization
     // Now set up the relevant matrices
     Eigen::VectorXd stateSubset(updateSize);                              // x (in most literature)
     Eigen::VectorXd measurementSubset(updateSize);                        // z
-    Eigen::MatrixXd measurementCovarianceSubset(updateSize, updateSize);  // R
     Eigen::MatrixXd stateToMeasurementSubset(updateSize, STATE_SIZE);     // H
-    Eigen::MatrixXd kalmanGainSubset(STATE_SIZE, updateSize);             // K
-    Eigen::VectorXd innovationSubset(updateSize);                         // z - Hx
     Eigen::VectorXd predictedMeasurement(updateSize);
     Eigen::VectorXd sigmaDiff(updateSize);
-    Eigen::MatrixXd predictedMeasCovar(updateSize, updateSize);
     Eigen::MatrixXd crossCovar(STATE_SIZE, updateSize);
 
     std::vector<Eigen::VectorXd> sigmaPointMeasurements(sigmaPoints_.size(), Eigen::VectorXd(updateSize));
@@ -144,6 +116,8 @@ namespace RobotLocalization
     predictedMeasurement.setZero();
     predictedMeasCovar.setZero();
     crossCovar.setZero();
+    // Resize since the size may have been unknown generically for the initialization call
+    predictedMeasCovar.resize(updateSize, updateSize);
 
     // Now build the sub-matrices from the full-sized matrices
     for (size_t i = 0; i < updateSize; ++i)
@@ -270,7 +244,7 @@ namespace RobotLocalization
     }
 
     // (3) Compute the Kalman gain, making sure to use the actual measurement covariance: K = P_xz * (P_zz + R)^-1
-    Eigen::MatrixXd invInnovCov = (predictedMeasCovar + measurementCovarianceSubset).inverse();
+    invInnovCov = (predictedMeasCovar + measurementCovarianceSubset).inverse();
     kalmanGainSubset = crossCovar * invInnovCov;
 
     // (4) Apply the gain to the difference between the actual and predicted measurements: x = x + K(z - z_hat)
@@ -287,6 +261,32 @@ namespace RobotLocalization
       }
     }
 
+    FB_DEBUG("Cross covariance is:\n" << crossCovar << "\n");
+  }
+
+  void Ukf::correct(const Measurement &measurement)
+  {
+    FB_DEBUG("---------------------- Ukf::correct ----------------------\n" <<
+             "State is:\n" << state_ <<
+             "\nMeasurement is:\n" << measurement.measurement_ <<
+             "\nMeasurement covariance is:\n" << measurement.covariance_ << "\n");
+    
+    // Prepare the correction for integration into the state and covariance
+    std::vector<size_t> updateIndices;
+    getUpdateIndices(measurement, updateIndices);
+    size_t updateSize = updateIndices.size();
+    Eigen::VectorXd innovationSubset(updateSize);                         // z - Hx
+    Eigen::MatrixXd kalmanGainSubset(STATE_SIZE, updateSize);             // K
+    Eigen::MatrixXd measurementCovarianceSubset(updateSize, updateSize);  // R
+    Eigen::MatrixXd predictedMeasCovar(updateSize, updateSize);
+    Eigen::MatrixXd invInnovCov;  // TODO - DETERMINE THE SIZE
+    innovationSubset.setZero();
+    kalmanGainSubset.setZero();
+    predictedMeasCovar.setZero();
+    measurementCovarianceSubset.setZero();
+    prepareCorrect(measurement, updateIndices, innovationSubset, measurementCovarianceSubset,
+                   kalmanGainSubset, invInnovCov, predictedMeasCovar);
+
     // (5) Check Mahalanobis distance of innovation
     if (checkMahalanobisThreshold(innovationSubset, invInnovCov, measurement.mahalanobisThresh_))
     {
@@ -301,7 +301,6 @@ namespace RobotLocalization
       uncorrected_ = false;
 
       FB_DEBUG("Predicated measurement covariance is:\n" << predictedMeasCovar <<
-               "\nCross covariance is:\n" << crossCovar <<
                "\nKalman gain subset is:\n" << kalmanGainSubset <<
                "\nInnovation:\n" << innovationSubset <<
                "\nCorrected full state is:\n" << state_ <<

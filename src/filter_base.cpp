@@ -209,6 +209,29 @@ namespace RobotLocalization
     return state_;
   }
 
+  void FilterBase::getUpdateIndices(const Measurement &measurement, std::vector<size_t> &updateIndices)
+  {
+    for (size_t i = 0; i < measurement.updateVector_.size(); ++i)
+    {
+      if (measurement.updateVector_[i])
+      {
+        // Handle nan and inf values in measurements
+        if (std::isnan(measurement.measurement_(i)))
+        {
+          FB_VERBOSE("Value at index " << i << " was nan. Excluding from update.\n");
+        }
+        else if (std::isinf(measurement.measurement_(i)))
+        {
+          FB_VERBOSE("Value at index " << i << " was inf. Excluding from update.\n");
+        }
+        else
+        {
+          updateIndices.push_back(i);
+        }
+      }
+    }
+  }
+
   void FilterBase::processMeasurement(const Measurement &measurement)
   {
     FB_VERBOSE("------ FilterBase::processMeasurement (" << measurement.topicName_ << ") ------\n");
@@ -242,27 +265,54 @@ namespace RobotLocalization
     }
     else
     {
-      FB_VERBOSE("First measurement. Initializing filter.\n");
+      // Prepare the measurement in order to check the initial Mahalanobis threshold
+      std::vector<size_t> updateIndices;
+      getUpdateIndices(measurement, updateIndices);
+      size_t updateSize = updateIndices.size();
+      Eigen::VectorXd innovationSubset(updateSize);
+      Eigen::MatrixXd measurementCovarianceSubset(updateSize, updateSize);
+      Eigen::MatrixXd kalmanGainSubset(STATE_SIZE, updateSize);
+      Eigen::MatrixXd auxMat(updateSize, STATE_SIZE);
+      Eigen::MatrixXd innovMatInv;  // TODO - DETERMINE THE SIZE
+      innovationSubset.setZero();
+      kalmanGainSubset.setZero();
+      measurementCovarianceSubset.setZero();
+      auxMat.setZero();
+      prepareCorrect(measurement, updateIndices, innovationSubset, measurementCovarianceSubset,
+                     kalmanGainSubset, innovMatInv, auxMat);
 
-      // Initialize the filter, but only with the values we're using
-      size_t measurementLength = measurement.updateVector_.size();
-      for (size_t i = 0; i < measurementLength; ++i)
+      if (checkMahalanobisThreshold(innovationSubset, innovMatInv, measurement.mahalanobisThreshInit_))
       {
-        state_[i] = (measurement.updateVector_[i] ? measurement.measurement_[i] : state_[i]);
-      }
+        FB_VERBOSE("First measurement. Initializing filter.\n");
 
-      // Same for covariance
-      for (size_t i = 0; i < measurementLength; ++i)
-      {
-        for (size_t j = 0; j < measurementLength; ++j)
+        // Initialize the filter, but only with the values we're using
+        size_t measurementLength = measurement.updateVector_.size();
+        for (size_t i = 0; i < measurementLength; ++i)
         {
-          estimateErrorCovariance_(i, j) = (measurement.updateVector_[i] && measurement.updateVector_[j] ?
-                                            measurement.covariance_(i, j) :
-                                            estimateErrorCovariance_(i, j));
+          state_[i] = (measurement.updateVector_[i] ? measurement.measurement_[i] : state_[i]);
+        }
+
+        // Same for covariance
+        for (size_t i = 0; i < measurementLength; ++i)
+        {
+          for (size_t j = 0; j < measurementLength; ++j)
+          {
+            estimateErrorCovariance_(i, j) = (measurement.updateVector_[i] && measurement.updateVector_[j] ?
+                                              measurement.covariance_(i, j) :
+                                              estimateErrorCovariance_(i, j));
+          }
+        }
+
+        initialized_ = true;
+      }
+      else
+      {
+        FB_VERBOSE("First measurement rejected - filter not initialized");
+        if (saveRejectedMeasurementTopics_)
+        {
+          rejectedMeasurementTopics_.push_back(measurement.topicName_);
         }
       }
-
-      initialized_ = true;
     }
 
     if (delta >= 0.0)
