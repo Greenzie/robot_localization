@@ -3045,13 +3045,10 @@ namespace RobotLocalization
               // Because the alpha-beta filter is maintaining history, angle wrapping is a problem if not handled.
               //  To correct this, we will always keep the offset in the range [-PI, PI]. The actual yaw angle
               //  wrapping is handled by the Kalman filter. The offset angle wrapping needs to be handled here. The additional step is what
-              //  happens when the angle steps over the boundary (e.g. from -(PI-0.0001) to (PI-0.0001)). That case also has to be handled.
-              //  We could shift the old yaw offset to outside the boundary on the same side as the new yaw offset. That's a bit of work
-              //  for a corner case, so we will instead just skip the alpha-beta filter under those conditions, then running the
-              //  alpha-beta filter again.
+              //  happens when the angle steps over the boundary (e.g. from -(PI-0.0001) to (PI-0.0001)). That is handled and explained
+              //  as a special case below.
               double yaw_offset = FilterUtilities::clampRotation(imuDynamicCorrectionData_[topicName].last_yaw_estimate_ - yaw);
-              if((::fabs(imuDynamicCorrectionData_[topicName].yaw_offset_) < 1e-9) ||
-                (::fabs(yaw_offset - imuDynamicCorrectionData_[topicName].yaw_offset_) > PI))
+              if(::fabs(imuDynamicCorrectionData_[topicName].yaw_offset_) < 1e-9)
               {
                 // Has not been initialized
                 imuDynamicCorrectionData_[topicName].yaw_offset_ = yaw_offset;
@@ -3061,10 +3058,24 @@ namespace RobotLocalization
               }
               else
               {
-                // Has been initialized - use the alpha-beta filter
+                // Grab a local variable since it might be changed under the special case below.
+                double local_previous_yaw_offset = imuDynamicCorrectionData_[topicName].yaw_offset_;
+                if(::fabs(yaw_offset - imuDynamicCorrectionData_[topicName].yaw_offset_) > PI)
+                {
+                  // Special case - the offset has wrapped around the pi boundary. Originally we assumed it was a small step
+                  //  across the boundary and could just be reset. That assumption proved incorrect. Instead, we have to handle
+                  //  this by moving the old yaw offset to the same side of the boundary as the new offset, handle the filter,
+                  //  then move it back to the correct side.
+                  local_previous_yaw_offset = (yaw_offset > 0.0) ?
+                    imuDynamicCorrectionData_[topicName].yaw_offset_ + TAU :  // Yaw offset is > 0, so previous one was < 0
+                    imuDynamicCorrectionData_[topicName].yaw_offset_ - TAU;  // Yaw offset is < 0, so previous one was > 0
+                }
+                
+                // Always clamp the offset to handle the special case in which there was a wrap. In normal cases, this does nothing.
                 imuDynamicCorrectionData_[topicName].yaw_offset_ =
-                  imuDynamicCorrectionData_[topicName].alpha_ * imuDynamicCorrectionData_[topicName].yaw_offset_ +
-                  (1.0 - imuDynamicCorrectionData_[topicName].alpha_) * yaw_offset;
+                  FilterUtilities::clampRotation(imuDynamicCorrectionData_[topicName].alpha_ * local_previous_yaw_offset +
+                  (1.0 - imuDynamicCorrectionData_[topicName].alpha_) * yaw_offset);
+
                 // Should be added (+) since these are variances.
                 // Note that the variance is not an actual angle, so angle wrapping is not required.
                 imuDynamicCorrectionData_[topicName].yaw_offset_variance_ =
