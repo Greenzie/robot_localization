@@ -3095,9 +3095,20 @@ namespace RobotLocalization
               else
               {
                 // Has been initialized - use the alpha-beta filter
+                // Use an alternate formulation to enable handling angle wrapping.
+                // new = alpha*previous + (1-alpha)*current => new = alpha*(previous-current) + current
+                // With rotation clamping to the [-pi, pi] range: clampRotation(alpha*clampRotation(previous-current) + current)
+                //  E.g. previous = 175, current = -175, alpha = 0.8 (in degrees for ease of understanding - the real system is in radians)
+                //  Then: new = clampRotation(0.8*clampRotation(175--175) + -175)
+                //  new = clampRotation(0.8*clampRotation(350) - 175)
+                //  new = clampRotation(0.8*-10 - 175)
+                //  new = clampRotation(-8 - 175)
+                //  new = clampRotation(-183)
+                //  new = 177
                 imuDynamicCorrectionData_[topicName].yaw_offset_ =
-                  imuDynamicCorrectionData_[topicName].alpha_ * imuDynamicCorrectionData_[topicName].yaw_offset_ +
-                  (1.0 - imuDynamicCorrectionData_[topicName].alpha_) * yaw_offset;
+                  FilterUtilities::clampRotation(imuDynamicCorrectionData_[topicName].alpha_ *
+                                                 FilterUtilities::clampRotation(imuDynamicCorrectionData_[topicName].yaw_offset_ - yaw_offset) + yaw_offset);
+
                 // Should be added (+) since these are variances.
                 // Note that the variance is not an actual angle, so angle wrapping is not required.
                 imuDynamicCorrectionData_[topicName].yaw_offset_variance_ =
