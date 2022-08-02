@@ -3078,13 +3078,10 @@ namespace RobotLocalization
               // Because the alpha-beta filter is maintaining history, angle wrapping is a problem if not handled.
               //  To correct this, we will always keep the offset in the range [-PI, PI]. The actual yaw angle
               //  wrapping is handled by the Kalman filter. The offset angle wrapping needs to be handled here. The additional step is what
-              //  happens when the angle steps over the boundary (e.g. from -(PI-0.0001) to (PI-0.0001)). That case also has to be handled.
-              //  We could shift the old yaw offset to outside the boundary on the same side as the new yaw offset. That's a bit of work
-              //  for a corner case, so we will instead just skip the alpha-beta filter under those conditions, then running the
-              //  alpha-beta filter again.
+              //  happens when the angle steps over the boundary (e.g. from -(PI-0.0001) to (PI-0.0001)). That is explained and handled in the
+              //  else condition.
               double yaw_offset = FilterUtilities::clampRotation(imuDynamicCorrectionData_[topicName].last_yaw_estimate_ - yaw);
-              if((::fabs(imuDynamicCorrectionData_[topicName].yaw_offset_) < 1e-9) ||
-                (::fabs(yaw_offset - imuDynamicCorrectionData_[topicName].yaw_offset_) > PI))
+              if(::fabs(imuDynamicCorrectionData_[topicName].yaw_offset_) < 1e-9)
               {
                 // Has not been initialized
                 imuDynamicCorrectionData_[topicName].yaw_offset_ = yaw_offset;
