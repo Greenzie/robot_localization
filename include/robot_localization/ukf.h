@@ -72,6 +72,22 @@ class Ukf: public FilterBase
     //!
     ~Ukf();
 
+    //! @brief Prepares the correction up to the outlier rejection, after which correct() integrates
+    //! the prepared correction
+    //!
+    //! @param[in] measurement - The measurement to prepare to fuse with the state estimate
+    //! @param[in] updateIndices - The indexes of the measurement that will be used to update the state
+    //! @param[out] innovationSubset - The innovation which applies to the subset of the state that matches the measurement
+    //! @param[out] measurementCovarianceSubset - The subset of the covariance that applies to this measurement
+    //! @param[out] kalmanGainSubset - The Kalman gain which applies to the subset of the state that matches the measurement
+    //! @param[out] invInnovCov - Used for computing the Kalman gain and checking the Mahalanobis distance
+    //! @param[out] predictedMeasCovar - Used for computing the Kalman gain and estimate error covariance
+    //!
+    void prepareCorrect(const Measurement &measurement, const std::vector<size_t> &updateIndices,
+                        Eigen::VectorXd &innovationSubset, Eigen::MatrixXd &measurementCovarianceSubset,
+                        Eigen::MatrixXd &kalmanGainSubset, Eigen::MatrixXd &invInnovCov,
+                        Eigen::MatrixXd &predictedMeasCovar);
+
     //! @brief Carries out the correct step in the predict/update cycle.
     //!
     //! @param[in] measurement - The measurement to fuse with our estimate
