@@ -3078,13 +3078,10 @@ namespace RobotLocalization
               // Because the alpha-beta filter is maintaining history, angle wrapping is a problem if not handled.
               //  To correct this, we will always keep the offset in the range [-PI, PI]. The actual yaw angle
               //  wrapping is handled by the Kalman filter. The offset angle wrapping needs to be handled here. The additional step is what
-              //  happens when the angle steps over the boundary (e.g. from -(PI-0.0001) to (PI-0.0001)). That case also has to be handled.
-              //  We could shift the old yaw offset to outside the boundary on the same side as the new yaw offset. That's a bit of work
-              //  for a corner case, so we will instead just skip the alpha-beta filter under those conditions, then running the
-              //  alpha-beta filter again.
+              //  happens when the angle steps over the boundary (e.g. from -(PI-0.0001) to (PI-0.0001)). That is explained and handled in the
+              //  else condition.
               double yaw_offset = FilterUtilities::clampRotation(imuDynamicCorrectionData_[topicName].last_yaw_estimate_ - yaw);
-              if((::fabs(imuDynamicCorrectionData_[topicName].yaw_offset_) < 1e-9) ||
-                (::fabs(yaw_offset - imuDynamicCorrectionData_[topicName].yaw_offset_) > PI))
+              if(::fabs(imuDynamicCorrectionData_[topicName].yaw_offset_) < 1e-9)
               {
                 // Has not been initialized
                 imuDynamicCorrectionData_[topicName].yaw_offset_ = yaw_offset;
@@ -3095,9 +3092,20 @@ namespace RobotLocalization
               else
               {
                 // Has been initialized - use the alpha-beta filter
+                // Use an alternate formulation to enable handling angle wrapping.
+                // new = alpha*previous + (1-alpha)*current => new = alpha*(previous-current) + current
+                // With rotation clamping to the [-pi, pi] range: clampRotation(alpha*clampRotation(previous-current) + current)
+                //  E.g. previous = 175, current = -175, alpha = 0.8 (in degrees for ease of understanding - the real system is in radians)
+                //  Then: new = clampRotation(0.8*clampRotation(175--175) + -175)
+                //  new = clampRotation(0.8*clampRotation(350) - 175)
+                //  new = clampRotation(0.8*-10 - 175)
+                //  new = clampRotation(-8 - 175)
+                //  new = clampRotation(-183)
+                //  new = 177
                 imuDynamicCorrectionData_[topicName].yaw_offset_ =
-                  imuDynamicCorrectionData_[topicName].alpha_ * imuDynamicCorrectionData_[topicName].yaw_offset_ +
-                  (1.0 - imuDynamicCorrectionData_[topicName].alpha_) * yaw_offset;
+                  FilterUtilities::clampRotation(imuDynamicCorrectionData_[topicName].alpha_ *
+                                                 FilterUtilities::clampRotation(imuDynamicCorrectionData_[topicName].yaw_offset_ - yaw_offset) + yaw_offset);
+
                 // Should be added (+) since these are variances.
                 // Note that the variance is not an actual angle, so angle wrapping is not required.
                 imuDynamicCorrectionData_[topicName].yaw_offset_variance_ =
@@ -3117,7 +3125,12 @@ namespace RobotLocalization
               debug_info += "    IMU offset var: " + std::to_string(imuDynamicCorrectionData_[topicName].yaw_offset_variance_) + " rad^2\n";
               RF_VERBOSE("IMU dynamic correction:\n" << debug_info.c_str());
             }
-            else{
+            else if (imuDynamicCorrectionData_[topicName].last_speed_ > imuDynamicCorrectionData_[topicName].min_speed_) {
+              // Moving fast enough, but variance too high. Log since there is a potential divergence case here.
+              ROS_WARN_STREAM_THROTTLE(2.0, "Cannot update dynamic corrections due to variance limit - check for accurate bias estimate.");
+            }
+            else
+            {
               RF_VERBOSE("Cannot update dynamic correction with speed: " <<
                 std::to_string(imuDynamicCorrectionData_[topicName].last_speed_) << " < " <<
                 imuDynamicCorrectionData_[topicName].min_speed_ << " or yaw variance: " <<

@@ -1,3 +1,9 @@
+ros-noetic-robot-localization (102.7.3-focal5) focal; urgency=medium
+
+  * Improved alpha-beta filter handling of edge cases
+
+ -- Joel <joel@greenzie.com>  Wed, 03 Aug 2022 03:21:53 -0400
+
 ros-noetic-robot-localization (102.7.3-focal4) focal; urgency=medium
 
   * Added bad data check for initialization
