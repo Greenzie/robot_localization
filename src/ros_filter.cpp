@@ -3125,7 +3125,12 @@ namespace RobotLocalization
               debug_info += "    IMU offset var: " + std::to_string(imuDynamicCorrectionData_[topicName].yaw_offset_variance_) + " rad^2\n";
               RF_VERBOSE("IMU dynamic correction:\n" << debug_info.c_str());
             }
-            else{
+            else if (imuDynamicCorrectionData_[topicName].last_speed_ > imuDynamicCorrectionData_[topicName].min_speed_) {
+              // Moving fast enough, but variance too high. Log since there is a potential divergence case here.
+              ROS_WARN_STREAM_THROTTLE(2.0, "Cannot update dynamic corrections due to variance limit - check for accurate bias estimate.");
+            }
+            else
+            {
               RF_VERBOSE("Cannot update dynamic correction with speed: " <<
                 std::to_string(imuDynamicCorrectionData_[topicName].last_speed_) << " < " <<
                 imuDynamicCorrectionData_[topicName].min_speed_ << " or yaw variance: " <<
