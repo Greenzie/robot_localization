@@ -34,6 +34,7 @@
 #define ROBOT_LOCALIZATION_ROS_FILTER_H
 
 #include "robot_localization/ros_filter_utilities.h"
+#include "robot_localization/ros_filter_bias_estimator.h"
 #include "robot_localization/filter_common.h"
 #include "robot_localization/filter_base.h"
 
@@ -652,7 +653,7 @@ template<class T> class RosFilter
 
     //! @brief Thisobject holds dynamic correction information, if enabled, per IMU input
     //!
-    std::map<std::string, ImuDynamicCorrectionData> imuDynamicCorrectionData_;
+    std::map<std::string, RosFilterBiasEstimator> imuDynamicCorrectionData_;
 
     //! @brief The most recent control input
     //!
