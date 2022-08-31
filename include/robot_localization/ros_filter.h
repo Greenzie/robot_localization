@@ -43,6 +43,7 @@
 
 #include <ros/ros.h>
 #include <std_msgs/String.h>
+#include <std_msgs/Bool.h>
 #include <std_srvs/Empty.h>
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/Imu.h>
@@ -102,38 +103,6 @@ struct CallbackData
   bool relative_;
   double rejectionThreshold_;
   double rejectionThresholdInit_;
-};
-
-struct ImuDynamicCorrectionData
-{
-  // Default max yaw variance is unknown (+/- 180 deg=pi rad ^2)
-  ImuDynamicCorrectionData(const double min_speed = 0.0,
-                           const double max_yaw_variance = M_PI * M_PI,
-                           const double alpha = 0.0) :
-    last_state_received_s_(-1.0),
-    last_yaw_estimate_(0.0),
-    last_yaw_variance_(M_PI * M_PI),  // Initialized to unknown yaw variance
-    yaw_offset_(0.0),
-    yaw_offset_variance_(0.0),
-    last_speed_(0.0),
-    min_speed_(min_speed),
-    max_yaw_variance_(max_yaw_variance),
-    alpha_(alpha),
-    yaw_offset_has_been_set_(false)
-  {
-
-  }
-
-  double last_state_received_s_;
-  double last_yaw_estimate_;
-  double last_yaw_variance_;
-  double yaw_offset_;
-  double yaw_offset_variance_;
-  double last_speed_;
-  double min_speed_;
-  double max_yaw_variance_;
-  double alpha_;
-  bool yaw_offset_has_been_set_;
 };
 
 typedef std::priority_queue<MeasurementPtr, std::vector<MeasurementPtr>, Measurement> MeasurementQueue;
@@ -264,6 +233,14 @@ template<class T> class RosFilter
     //! This method receives odometry from one EKF in order to dynamically correct orientation input on another EKF.
     //!
     void imuDynamicCorrectionCallback(const nav_msgs::Odometry::ConstPtr &msg, const std::string &topicName);
+
+    //! @brief Callback method for receiving all magnetometer validity data
+    //! @param[in] msg - The ROS Bool message to take in.
+    //! @param[in] topicName - The topic name for the IMU message that is being dynamically corrected.
+    //!
+    //! This method receives magnetometer validity information to associate with the dynamic correction data
+    //!
+    void imuMagnetometerValidityCallback(const std_msgs::Bool::ConstPtr &msg, const std::string &topicName);
 
     //! @brief Processes all measurements in the measurement queue, in temporal order
     //!

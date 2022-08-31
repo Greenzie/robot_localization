@@ -619,6 +619,18 @@ namespace RobotLocalization
   }
 
   template<typename T>
+  void RosFilter<T>::imuMagnetometerValidityCallback(const std_msgs::Bool::ConstPtr &msg,
+                                                     const std::string &topicName)
+  {
+    RF_VERBOSE("Received magnetometer validity data for topic " << topicName << "\n");
+    // Pass it in/save it all
+    if(imuDynamicCorrectionData_.find(topicName) != imuDynamicCorrectionData_.end())
+    {
+      imuDynamicCorrectionData_[topicName].set_valid(msg->data);
+    }
+  }
+
+  template<typename T>
   void RosFilter<T>::integrateMeasurements(const ros::Time &currentTime)
   {
     const double currentTimeSec = currentTime.toSec();
@@ -1596,19 +1608,11 @@ namespace RobotLocalization
               double max_divergence = M_PI * 2.0;  // Any divergence by default
               nhLocal_.param(correction_max_divergence, max_divergence, max_divergence);
 
-              std::string correction_max_rate_score = dynamic_magnetometer_correction + std::string("_max_rate_score");
-              double max_rate_score = M_PI * 2.0;  // Any score by default
-              nhLocal_.param(correction_max_rate_score, max_rate_score, max_rate_score);
-
-              std::string correction_window_size = dynamic_magnetometer_correction + std::string("_window_size");
-              double window_size = 1.0;  // 1 second default
-              nhLocal_.param(correction_window_size, window_size, window_size);
-
               // Add the data for handling the dynamic correction
               std::string dynamic_correction_topic = imuTopicName + std::string("_pose");
               imuDynamicCorrectionData_.insert(std::pair<std::string, RosFilterBiasEstimator>(
                 dynamic_correction_topic, RosFilterBiasEstimator(min_speed, max_variance, alpha,
-                max_divergence, max_rate_score, window_size)));
+                max_divergence, false)));  // Default to invalid unless confirmed via an external system
               // Set the dynamic corrections axes
               std::vector<bool> dynamic_correction_axes;
               dynamic_correction_axes.push_back((poseUpdateVec[StateMemberRoll] > 0) ? true : false);
@@ -1623,6 +1627,13 @@ namespace RobotLocalization
               topicSubs_.push_back(
                 nh_.subscribe<nav_msgs::Odometry>(imuCorrectionTopic, imuQueueSize,
                   boost::bind(&RosFilter<T>::imuDynamicCorrectionCallback, this, _1,
+                    dynamic_correction_topic), ros::VoidPtr(),
+                    ros::TransportHints().tcpNoDelay(nodelayImu)));
+              
+              // Subscribe to validity data as well
+              topicSubs_.push_back(
+                nh_.subscribe<std_msgs::Bool>(imuTopic + std::string("/magnetometer_valid"), 1,
+                  boost::bind(&RosFilter<T>::imuMagnetometerValidityCallback, this, _1,
                     dynamic_correction_topic), ros::VoidPtr(),
                     ros::TransportHints().tcpNoDelay(nodelayImu)));
             }
