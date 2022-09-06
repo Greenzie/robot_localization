@@ -162,6 +162,7 @@ add_dependencies(robot_localization_listener_node ${PROJECT_NAME}_gencpp)
 # Linking
 target_link_libraries(ros_filter_utilities ${catkin_LIBRARIES} ${EIGEN3_LIBRARIES})
 target_link_libraries(filter_utilities ${catkin_LIBRARIES} ${EIGEN3_LIBRARIES})
+target_link_libraries(ros_filter_bias_estimator filter_utilities ${catkin_LIBRARIES} ${EIGEN3_LIBRARIES})
 target_link_libraries(filter_base filter_utilities ${catkin_LIBRARIES} ${EIGEN3_LIBRARIES})
 target_link_libraries(ekf filter_base ${catkin_LIBRARIES} ${EIGEN3_LIBRARIES})
 target_link_libraries(ukf filter_base ${catkin_LIBRARIES} ${EIGEN3_LIBRARIES})

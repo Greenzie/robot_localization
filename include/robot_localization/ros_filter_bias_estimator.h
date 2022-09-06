@@ -32,6 +32,8 @@ class RosFilterBiasEstimator {
                                const double alpha,
                                const double max_divergence = M_PI * 2.0,
                                const bool is_valid = false);
+    
+        RosFilterBiasEstimator(const RosFilterBiasEstimator& right);
 
         // Destructor
         ~RosFilterBiasEstimator();
@@ -47,8 +49,8 @@ class RosFilterBiasEstimator {
             debug_ = debug;
             verbose_ = verbose;
         }
-        bool getDebug() { return debug_; }
-        bool getVerbose() { return verbose_; }
+        bool getDebug() const { return debug_; }
+        bool getVerbose() const { return verbose_; }
 
         /**
          * @brief Sets the data from a prior estimator
@@ -92,23 +94,23 @@ class RosFilterBiasEstimator {
                 estimation_axes_[axis] = is_estimating[axis];
             }
         }
-        void get_estimation_axes(std::vector<bool> is_estimating) {
-            for(uint8_t axis = 0; axis < 3; axis++)
+        void get_estimation_axes(std::vector<bool> is_estimating) const {
+            for(uint8_t axis = 0; axis < ESTIMATION_AXES; axis++)
             {
                 is_estimating.push_back(estimation_axes_[axis]);
             }
         }
 
         void set_min_speed(double min_speed) { min_speed_ = min_speed; }
-        double get_min_speed() { return min_speed_; }
+        double get_min_speed() const { return min_speed_; }
         void set_max_orientation_variance(double max_var) { max_orientation_variance_ = max_var; }
-        double get_max_orientation_variance() { return max_orientation_variance_; }
+        double get_max_orientation_variance() const { return max_orientation_variance_; }
         void set_alpha(double alpha) { alpha_ = alpha; }
-        double get_alpha() { return alpha_; }
+        double get_alpha() const { return alpha_; }
         void set_max_divergence(double max_divergence) { max_divergence_ = max_divergence; }
-        double get_max_divergence() { return max_divergence_; }
+        double get_max_divergence() const { return max_divergence_; }
         void set_valid(bool valid) { is_valid_ = valid; }
-        bool is_valid() { return is_valid_; }
+        bool is_valid() const { return is_valid_; }
     private:
         // Time of last state received in seconds
         double uncorrected_state_received_s_{0.0};

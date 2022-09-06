@@ -615,7 +615,10 @@ namespace RobotLocalization
            msg->twist.twist.linear.y * msg->twist.twist.linear.y +
            msg->twist.twist.linear.z * msg->twist.twist.linear.z);
     // Pass it in/save it all
-    imuDynamicCorrectionData_[topicName].setImuDynamicCorrectionData(orientation, variance, speed, time_s);
+    if(imuDynamicCorrectionData_.find(topicName) != imuDynamicCorrectionData_.end())
+    {
+      imuDynamicCorrectionData_[topicName].setImuDynamicCorrectionData(orientation, variance, speed, time_s);
+    }
   }
 
   template<typename T>
@@ -1610,7 +1613,7 @@ namespace RobotLocalization
 
               // Add the data for handling the dynamic correction
               std::string dynamic_correction_topic = imuTopicName + std::string("_pose");
-              imuDynamicCorrectionData_.insert(std::pair<std::string, RosFilterBiasEstimator>(
+              imuDynamicCorrectionData_.insert(std::pair<std::string const, RosFilterBiasEstimator>(
                 dynamic_correction_topic, RosFilterBiasEstimator(min_speed, max_variance, alpha,
                 max_divergence, false)));  // Default to invalid unless confirmed via an external system
               // Set the dynamic corrections axes
@@ -1632,7 +1635,7 @@ namespace RobotLocalization
               
               // Subscribe to validity data as well
               topicSubs_.push_back(
-                nh_.subscribe<std_msgs::Bool>(imuTopic + std::string("/magnetometer_valid"), 1,
+                nh_.subscribe<std_msgs::Bool>(imuTopic + std::string("/magnetometer_valid"), imuQueueSize,
                   boost::bind(&RosFilter<T>::imuMagnetometerValidityCallback, this, _1,
                     dynamic_correction_topic), ros::VoidPtr(),
                     ros::TransportHints().tcpNoDelay(nodelayImu)));
@@ -3121,7 +3124,7 @@ namespace RobotLocalization
               is_bias_valid, debugStream_);
           std::vector<bool> estimation_axes;
           imuDynamicCorrectionData_[topicName].get_estimation_axes(estimation_axes);
-          bool can_update = true;
+          bool can_update = (is_bias_valid.size() > 0) && (estimation_axes.size() > 0);
           for(uint8_t axis = 0; ((axis < is_bias_valid.size()) && (can_update == true)); axis++)
           {
             if((estimation_axes[axis] == true) && (is_bias_valid[axis] == false)) {

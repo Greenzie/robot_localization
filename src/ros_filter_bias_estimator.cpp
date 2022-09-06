@@ -1,6 +1,5 @@
 #include "robot_localization/ros_filter_bias_estimator.h"
 #include "robot_localization/filter_utilities.h"
-#include "robot_localization/ros_filter_utilities.h"
 
 namespace RobotLocalization
 {
@@ -25,10 +24,22 @@ RosFilterBiasEstimator::~RosFilterBiasEstimator() {
 
 }
 
+RosFilterBiasEstimator::RosFilterBiasEstimator(const RosFilterBiasEstimator& right) {
+    set_min_speed(right.get_min_speed());
+    set_max_orientation_variance(right.get_max_orientation_variance());
+    set_alpha(right.get_alpha());
+    set_max_divergence(right.get_max_divergence());
+    set_valid(right.is_valid());
+    setDebugInfo(right.getDebug(), right.getVerbose());
+    std::vector<bool> estimation_axes;
+    right.get_estimation_axes(estimation_axes);
+    set_estimation_axes(estimation_axes);
+}
+
 void RosFilterBiasEstimator::reset() {
     uncorrected_state_received_s_ = 0.0;
     uncorrected_speed_ = 0.0;
-    for(uint8_t counter = 0; counter < 3; counter++)
+    for(uint8_t counter = 0; counter < ESTIMATION_AXES; counter++)
     {
         orientation_offset_has_been_set_[counter] = false;
         orientation_offset_is_updating_[counter] = false;
@@ -57,7 +68,7 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                                                 std::vector<bool> &is_valid,
                                                 std::ofstream &debug_stream) {
     is_valid.clear();  // Clear and start fresh
-    for(uint8_t axis = 0; axis < 3; axis++)
+    for(uint8_t axis = 0; axis < ESTIMATION_AXES; axis++)
     {
         if(estimation_axes_[axis])
         {
@@ -150,7 +161,7 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                 }
                 else if (uncorrected_speed_ > min_speed_) {
                     // Moving fast enough, but variance too high. Log since there is a potential divergence case here.
-                    ROS_WARN_STREAM_THROTTLE(2.0, "Cannot update dynamic corrections due to variance limit - check for accurate bias estimate.");
+                    RF_TOOLS_VERBOSE("Cannot update dynamic corrections due to variance limit - check for accurate bias estimate.");
                 }
                 else
                 {
