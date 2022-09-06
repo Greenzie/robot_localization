@@ -625,7 +625,8 @@ namespace RobotLocalization
   void RosFilter<T>::imuMagnetometerValidityCallback(const std_msgs::Bool::ConstPtr &msg,
                                                      const std::string &topicName)
   {
-    RF_VERBOSE("Received magnetometer validity data for topic " << topicName << "\n");
+    RF_VERBOSE("Received magnetometer validity data for topic " << topicName <<
+      " with validity " << ((msg->data) ? "valid\n" : "invalid\n"));
     // Pass it in/save it all
     if(imuDynamicCorrectionData_.find(topicName) != imuDynamicCorrectionData_.end())
     {
@@ -3175,6 +3176,7 @@ namespace RobotLocalization
           {
             // Cannot update
             retVal = false;
+            RF_VERBOSE("Unable to use magnetometer data.");
           }
         }
 

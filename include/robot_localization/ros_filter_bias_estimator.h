@@ -94,7 +94,7 @@ class RosFilterBiasEstimator {
                 estimation_axes_[axis] = is_estimating[axis];
             }
         }
-        void get_estimation_axes(std::vector<bool> is_estimating) const {
+        void get_estimation_axes(std::vector<bool> &is_estimating) const {
             for(uint8_t axis = 0; axis < ESTIMATION_AXES; axis++)
             {
                 is_estimating.push_back(estimation_axes_[axis]);
