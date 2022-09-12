@@ -4,6 +4,7 @@
 #include <Eigen/Dense>
 #include <fstream>
 #include <vector>
+#include <mutex>
 
 #define RF_TOOLS_DEBUG(msg) if (getDebug() || getVerbose()) { debug_stream << msg; }
 #define RF_TOOLS_VERBOSE(msg) if (getVerbose()) { debug_stream << msg; }
@@ -25,12 +26,14 @@ class RosFilterBiasEstimator {
          * @param max_variance Maximum variance at which to update the estimator
          * @param alpha Alpha term of the alpha-beta filter for the bias estimator
          * @param max_divergence Maximum divergence between the feeder estimator and this estimator before rejecting the inputs
+         * @param max_num_divergences: Maximum number of divergences before no longer trying to correct. 0 means infinite.
          * @param is_valid Enables defaulting the validity to false until confirmed by an external system
          */
         RosFilterBiasEstimator(const double min_speed,
                                const double max_variance,
                                const double alpha,
                                const double max_divergence = M_PI * 2.0,
+                               const int max_num_divergences = 0,
                                const bool is_valid = false);
     
         RosFilterBiasEstimator(const RosFilterBiasEstimator& right);
@@ -101,6 +104,8 @@ class RosFilterBiasEstimator {
             }
         }
 
+        void set_max_num_divergences(int max_num) { max_num_divergences_ = max_num; }
+        int get_max_num_divergences() const { return max_num_divergences_; }
         void set_min_speed(double min_speed) { min_speed_ = min_speed; }
         double get_min_speed() const { return min_speed_; }
         void set_max_orientation_variance(double max_var) { max_orientation_variance_ = max_var; }
@@ -109,11 +114,18 @@ class RosFilterBiasEstimator {
         double get_alpha() const { return alpha_; }
         void set_max_divergence(double max_divergence) { max_divergence_ = max_divergence; }
         double get_max_divergence() const { return max_divergence_; }
-        void set_valid(bool valid) { is_valid_ = valid; }
+        void set_valid(bool valid) {
+            mtx_.lock();
+            is_valid_ = valid;
+            mtx_.unlock();
+        }
         bool is_valid() const { return is_valid_; }
     private:
         // Time of last state received in seconds
         double uncorrected_state_received_s_{0.0};
+
+        // Ensures thread safety due to various datastreams in callbacks
+        std::mutex mtx_;
 
         // Estimation axes
         bool estimation_axes_[ESTIMATION_AXES] = {false, false, false};
@@ -132,6 +144,9 @@ class RosFilterBiasEstimator {
         // The minimum speed at which to apply corrections
         double min_speed_{0.0};
 
+        // Maximum number of divergences before no longer trying to correct. 0 means infinite.
+        int max_num_divergences_{ 0 };
+
         // The maximum variance at which to apply corrections
         double max_orientation_variance_{0.0};
 
@@ -144,8 +159,11 @@ class RosFilterBiasEstimator {
         // External validity check - defaults to true to enable no checks with optional override on construction
         bool is_valid_{true};
 
+        // Whether no longer trying again
+        int num_exceeded_max_divergence_{ 0 };
+
         // Handling the times for the divergence test to determine whether it is valid
-        int divergence_test_counter_[ESTIMATION_AXES] = {0, 0, 0};
+        int divergence_test_counter_[ESTIMATION_AXES] = {-1, -1, -1};
         double divergence_test_steps_[ESTIMATION_AXES] = {0, 0, 0};
 
         // Whether the orientation offset has been set for future use.

@@ -12,11 +12,13 @@ RosFilterBiasEstimator::RosFilterBiasEstimator(const double min_speed,
                                                const double max_variance,
                                                const double alpha,
                                                const double max_divergence,
+                                               const int max_num_divergences,
                                                const bool is_valid) {
     set_min_speed(min_speed);
     set_max_orientation_variance(max_variance);
     set_alpha(alpha);
     set_max_divergence(max_divergence);
+    set_max_num_divergences(max_num_divergences);
     set_valid(is_valid);
 }
 
@@ -34,18 +36,24 @@ RosFilterBiasEstimator::RosFilterBiasEstimator(const RosFilterBiasEstimator& rig
     std::vector<bool> estimation_axes;
     right.get_estimation_axes(estimation_axes);
     set_estimation_axes(estimation_axes);
+    set_max_num_divergences(right.get_max_num_divergences());
 }
 
 void RosFilterBiasEstimator::reset() {
+    mtx_.lock();
     uncorrected_state_received_s_ = 0.0;
     uncorrected_speed_ = 0.0;
     for(uint8_t counter = 0; counter < ESTIMATION_AXES; counter++)
     {
         orientation_offset_has_been_set_[counter] = false;
         orientation_offset_is_updating_[counter] = false;
+        divergence_test_counter_[counter] = -1;
+        orientation_offset_[counter] = 0.0;
+        orientation_offset_variance_[counter] = M_PI * M_PI;
     }
     uncorrected_orientation_estimate_.setZero();
-    orientation_offset_ << M_PI * M_PI, M_PI * M_PI, M_PI * M_PI;
+    num_exceeded_max_divergence_ = 0;
+    mtx_.unlock();
 }
 
 void RosFilterBiasEstimator::setImuDynamicCorrectionData(const Eigen::Vector3d &orientation_estimate,
@@ -53,10 +61,12 @@ void RosFilterBiasEstimator::setImuDynamicCorrectionData(const Eigen::Vector3d &
                                                          double speed,
                                                          double time_s) {
     // Save the new data
+    mtx_.lock();
     uncorrected_orientation_estimate_ = orientation_estimate;
     uncorrected_orientation_variance_ = orientation_variance;
     uncorrected_speed_ = speed;
     uncorrected_state_received_s_ = time_s;
+    mtx_.unlock();
 }
 
 void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_measurement,
@@ -67,123 +77,146 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                                                 Eigen::Vector3d &estimate_variance,
                                                 std::vector<bool> &is_valid,
                                                 std::ofstream &debug_stream) {
+    mtx_.lock();
     is_valid.clear();  // Clear and start fresh
     for(uint8_t axis = 0; axis < ESTIMATION_AXES; axis++)
     {
         if(estimation_axes_[axis])
         {
-            is_valid.push_back(is_valid_);  // Set based on external system. Can be switched to false later based on internal tests
+            // Set based on external system. Can be switched to false later based on internal tests
+            bool can_still_update = (max_num_divergences_ < 1) || (num_exceeded_max_divergence_ < max_num_divergences_);
+            is_valid.push_back(is_valid_ && can_still_update);
             // For logging
             std::string axis_name = (axis == 0) ? "roll" : (axis == 1) ? "pitch" : "yaw";
             if ((uncorrected_state_received_s_ > 0.0) && ((time_s - uncorrected_state_received_s_) < sensor_timeout))
             {
-                if((uncorrected_orientation_variance_[axis] < max_orientation_variance_) && (uncorrected_speed_ > min_speed_))
+                if (is_valid[axis])
                 {
-                    // For handling the required time until can run a divergence check
-                    bool was_updating = orientation_offset_is_updating_[axis];
-                    // Updating now
-                    orientation_offset_is_updating_[axis] = true;
-
-                    // Should be subtracted (-) since the offset is a difference.
-                    // The alpha-beta filter is rather special here, as it has to account for a few issues. First, how do we initialize it?
-                    //  If initialized to zero, that means the orientation offset is assumed to be zero to start, with the resulting slow adjustments to
-                    //  the filtered correction. The problem is that it's not zero. Without a better set of information (e.g. stored data from
-                    //  a previous run), the best way is to initialize it with a jump to the first calculation, then run the filter.
-                    // Because the alpha-beta filter is maintaining history, angle wrapping is a problem if not handled.
-                    //  To correct this, we will always keep the offset in the range [-PI, PI]. The actual orientation angle
-                    //  wrapping is handled by the Kalman filter. The offset angle wrapping needs to be handled here. The additional step is what
-                    //  happens when the angle steps over the boundary (e.g. from -(PI-0.0001) to (PI-0.0001)). That is explained and handled in the
-                    //  else condition.
-                    double offset = FilterUtilities::clampRotation(uncorrected_orientation_estimate_[axis] - orientation_measurement[axis]);
-                    if(::fabs(orientation_offset_[axis]) < 1e-9)
+                    // Has valid data for updating the offset estimate
+                    if((uncorrected_orientation_variance_[axis] < max_orientation_variance_) && (uncorrected_speed_ > min_speed_))
                     {
-                        // Has not been initialized
-                        orientation_offset_[axis] = offset;
-                        // Should be added (+) since these are variances
-                        orientation_offset_variance_[axis] = measurement_variance[axis] + uncorrected_orientation_variance_[axis];
-                    }
-                    else
-                    {
-                        // Has been initialized - use the alpha-beta filter
-                        // Use an alternate formulation to enable handling angle wrapping.
-                        // new = alpha*previous + (1-alpha)*current => new = alpha*(previous-current) + current
-                        // With rotation clamping to the [-pi, pi] range: clampRotation(alpha*clampRotation(previous-current) + current)
-                        //  E.g. previous = 175, current = -175, alpha = 0.8 (in degrees for ease of understanding - the real system is in radians)
-                        //  Then: new = clampRotation(0.8*clampRotation(175--175) + -175)
-                        //  new = clampRotation(0.8*clampRotation(350) - 175)
-                        //  new = clampRotation(0.8*-10 - 175)
-                        //  new = clampRotation(-8 - 175)
-                        //  new = clampRotation(-183)
-                        //  new = 177
-                        orientation_offset_[axis] =
-                            FilterUtilities::clampRotation(alpha_ * FilterUtilities::clampRotation(orientation_offset_[axis] - offset) + offset);
+                        // For handling the required time until can run a divergence check
+                        bool was_updating = orientation_offset_is_updating_[axis];
+                        // Updating now
+                        orientation_offset_is_updating_[axis] = true;
 
-                        // Should be added (+) since these are variances.
-                        // Note that the variance is not an actual angle, so angle wrapping is not required.
-                        orientation_offset_variance_[axis] = alpha_ * orientation_offset_variance_[axis] +
-                            (1.0 - alpha_) * (uncorrected_orientation_variance_[axis] + measurement_variance[axis]);
-                    }
-                    // Calculate the difference between the two filters estimates
-                    double abs_filter_difference = ::fabs(uncorrected_orientation_estimate_[axis] - orientation_estimate[axis]);
-                    // Dropped below limit or calculated once with no limit
-                    orientation_offset_has_been_set_[axis] |= (abs_filter_difference < max_divergence_) | (max_divergence_ < 1e-9);
-
-                    // Handle the divergence test initialization
-                    if(was_updating == false) {
-                        // Calculate the time
-                        // Determine the time to drop below the cutoff based on the current difference between the uncorrected and corrected estimators
-                        //  and the alpha-beta filter
-                        if((max_divergence_ < abs_filter_difference) && (max_divergence_ > 0.0))
+                        // Should be subtracted (-) since the offset is a difference.
+                        // The alpha-beta filter is rather special here, as it has to account for a few issues. First, how do we initialize it?
+                        //  If initialized to zero, that means the orientation offset is assumed to be zero to start, with the resulting slow adjustments to
+                        //  the filtered correction. The problem is that it's not zero. Without a better set of information (e.g. stored data from
+                        //  a previous run), the best way is to initialize it with a jump to the first calculation, then run the filter.
+                        // Because the alpha-beta filter is maintaining history, angle wrapping is a problem if not handled.
+                        //  To correct this, we will always keep the offset in the range [-PI, PI]. The actual orientation angle
+                        //  wrapping is handled by the Kalman filter. The offset angle wrapping needs to be handled here. The additional step is what
+                        //  happens when the angle steps over the boundary (e.g. from -(PI-0.0001) to (PI-0.0001)). That is explained and handled in the
+                        //  else condition.
+                        double offset = FilterUtilities::clampRotation(uncorrected_orientation_estimate_[axis] - orientation_measurement[axis]);
+                        if(::fabs(orientation_offset_[axis]) < 1e-9)
                         {
-                            divergence_test_steps_[axis] = round(log(max_divergence_ / abs_filter_difference) / log(alpha_));
+                            // Has not been initialized
+                            orientation_offset_[axis] = offset;
+                            // Should be added (+) since these are variances
+                            orientation_offset_variance_[axis] = measurement_variance[axis] + uncorrected_orientation_variance_[axis];
                         }
                         else
                         {
-                            divergence_test_steps_[axis] = 0;  // Already within tolerance
-                        }
-                        // Set the start counter
-                        divergence_test_steps_[axis] = 0;
-                    }
-                    if(divergence_test_counter_[axis] <= divergence_test_steps_[axis])
-                    {
-                        divergence_test_counter_[axis]++;
-                    }
+                            // Has been initialized - use the alpha-beta filter
+                            // Use an alternate formulation to enable handling angle wrapping.
+                            // new = alpha*previous + (1-alpha)*current => new = alpha*(previous-current) + current
+                            // With rotation clamping to the [-pi, pi] range: clampRotation(alpha*clampRotation(previous-current) + current)
+                            //  E.g. previous = 175, current = -175, alpha = 0.8 (in degrees for ease of understanding - the real system is in radians)
+                            //  Then: new = clampRotation(0.8*clampRotation(175--175) + -175)
+                            //  new = clampRotation(0.8*clampRotation(350) - 175)
+                            //  new = clampRotation(0.8*-10 - 175)
+                            //  new = clampRotation(-8 - 175)
+                            //  new = clampRotation(-183)
+                            //  new = 177
+                            orientation_offset_[axis] =
+                                FilterUtilities::clampRotation(alpha_ * FilterUtilities::clampRotation(orientation_offset_[axis] - offset) + offset);
 
-                    // Handle debugging
-                    std::string debug_info;
-                    debug_info += "    EKF 1 " + axis_name + ": " + std::to_string(uncorrected_orientation_estimate_[axis] * 180 / M_PI) + " deg\n";
-                    debug_info += "    EKF 1 " + axis_name + " var: " + std::to_string(uncorrected_orientation_variance_[axis]) + " rad^2\n";
-                    debug_info += "    Uncorrected IMU " + axis_name + ": " + std::to_string(orientation_measurement[axis] * 180 / M_PI) + " deg\n";
-                    debug_info += "    Uncorrected IMU var: " + std::to_string(measurement_variance[axis]) + " rad^2\n";
-                    debug_info += "    IMU offset: " + std::to_string(orientation_offset_[axis] * 180 / M_PI) + " deg\n";
-                    debug_info += "    IMU offset var: " + std::to_string(orientation_offset_variance_[axis]) + " rad^2\n";
-                    RF_TOOLS_VERBOSE("IMU dynamic correction:\n" << debug_info.c_str());
-                }
-                else if (uncorrected_speed_ > min_speed_) {
-                    // Moving fast enough, but variance too high. Log since there is a potential divergence case here.
-                    RF_TOOLS_VERBOSE("Cannot update dynamic corrections due to variance limit - check for accurate bias estimate.");
+                            // Should be added (+) since these are variances.
+                            // Note that the variance is not an actual angle, so angle wrapping is not required.
+                            orientation_offset_variance_[axis] = alpha_ * orientation_offset_variance_[axis] +
+                                (1.0 - alpha_) * (uncorrected_orientation_variance_[axis] + measurement_variance[axis]);
+                        }
+                        // Calculate the difference between the two filters estimates
+                        double abs_filter_difference = ::fabs(uncorrected_orientation_estimate_[axis] - orientation_estimate[axis]);
+                        // Dropped below limit or calculated once with no limit
+                        orientation_offset_has_been_set_[axis] |= (abs_filter_difference < max_divergence_) | (max_divergence_ < 1e-9);
+
+                        // Handle the divergence test initialization
+                        if(was_updating == false) {
+                            // Calculate the time
+                            // Determine the time to drop below the cutoff based on the current difference between the uncorrected and corrected estimators
+                            //  and the alpha-beta filter
+                            // The calculation is from max_divergence_ = abs_filter_difference * alpha_^(divergence_test_steps_)
+                            // divergence_test_steps_ = ln(max_divergence_ / abs_filter_difference) / ln(alpha_)
+                            // Note that max_divergence_ must be < abs_filter_difference since alpha_ < 1.0
+                            if((max_divergence_ < abs_filter_difference) && (max_divergence_ > 0.0))
+                            {
+                                divergence_test_steps_[axis] = round(log(max_divergence_ / abs_filter_difference) / log(alpha_));
+                            }
+                            else
+                            {
+                                divergence_test_steps_[axis] = 0;  // Already within tolerance
+                            }
+                            RF_TOOLS_VERBOSE("Required number of steps for axis " << axis_name <<
+                                " to test divergence: " << divergence_test_steps_[axis] << " given abs filter difference " << abs_filter_difference
+                                << " and max difference " << max_divergence_ << "\n");
+                            // Set the start counter
+                            divergence_test_counter_[axis] = 0;
+                        }
+                        if((divergence_test_counter_[axis] <= divergence_test_steps_[axis]) && (divergence_test_counter_[axis] >= 0))
+                        {
+                            divergence_test_counter_[axis]++;
+                        }
+
+                        // Handle debugging
+                        std::string debug_info;
+                        debug_info += "    EKF 1 " + axis_name + ": " + std::to_string(uncorrected_orientation_estimate_[axis] * 180 / M_PI) + " deg\n";
+                        debug_info += "    EKF 1 " + axis_name + " var: " + std::to_string(uncorrected_orientation_variance_[axis]) + " rad^2\n";
+                        debug_info += "    Uncorrected IMU " + axis_name + ": " + std::to_string(orientation_measurement[axis] * 180 / M_PI) + " deg\n";
+                        debug_info += "    Uncorrected IMU var: " + std::to_string(measurement_variance[axis]) + " rad^2\n";
+                        debug_info += "    IMU offset: " + std::to_string(orientation_offset_[axis] * 180 / M_PI) + " deg\n";
+                        debug_info += "    IMU offset var: " + std::to_string(orientation_offset_variance_[axis]) + " rad^2\n";
+                        RF_TOOLS_VERBOSE("IMU dynamic correction:\n" << debug_info.c_str());
+                    }
+                    else if (uncorrected_speed_ > min_speed_) {
+                        // Moving fast enough, but variance too high. Log since there is a potential divergence case here.
+                        RF_TOOLS_VERBOSE("Cannot update dynamic corrections due to variance limit - check for accurate bias estimate.");
+                        orientation_offset_is_updating_[axis] = false;  // Not updating
+                    }
+                    else
+                    {
+                        // Still has valid data, but cannot update due to other conditions
+                        RF_TOOLS_VERBOSE("Cannot update dynamic correction with speed: " <<
+                            uncorrected_speed_ << " < " <<
+                            min_speed_ << " or yaw variance: " <<
+                            uncorrected_orientation_variance_[axis] << " > " <<
+                            max_orientation_variance_ << "\n");
+
+                        // Run the divergence test
+                        if(divergence_test_counter_[axis] >= divergence_test_steps_[axis])
+                        {
+                            double abs_filter_difference = ::fabs(uncorrected_orientation_estimate_[axis] - orientation_estimate[axis]);
+                            if(abs_filter_difference > max_divergence_)
+                            {
+                                // Divergence detected - cannot trust this filter's estimate of the orientation
+                                orientation_offset_has_been_set_[axis] = false;  // Wait until divergence drops below limit again
+                                RF_TOOLS_DEBUG("IMU orientation divergence of " << abs_filter_difference * 180.0 / M_PI <<
+                                    " degrees detected due to divergence at min speed - ignoring incorrect data\n");
+                                // Note that we get automatic hysteresis because we only stop using measurements via this method when the speed drops below the cutoff.
+                                num_exceeded_max_divergence_ += 1;  // Index the counter
+                            }
+                            divergence_test_counter_[axis] = -1;  // Already run
+                        }
+                        orientation_offset_is_updating_[axis] = false;  // Not updating
+                    }
                 }
                 else
                 {
-                    RF_TOOLS_VERBOSE("Cannot update dynamic correction with speed: " <<
-                    uncorrected_speed_ << " < " <<
-                    min_speed_ << " or yaw variance: " <<
-                    uncorrected_orientation_variance_[axis] << " > " <<
-                    max_orientation_variance_ << "\n");
-
-                    // Run the divergence test
-                    if(divergence_test_counter_[axis] >= divergence_test_steps_[axis])
-                    {
-                        double abs_filter_difference = ::fabs(uncorrected_orientation_estimate_[axis] - orientation_measurement[axis]);
-                        if(abs_filter_difference > max_divergence_)
-                        {
-                            // Divergence detected - cannot trust this filter's estimate of the orientation
-                            orientation_offset_has_been_set_[axis] = false;
-                            RF_TOOLS_DEBUG("IMU orientation divergence detected due to divergence at min speed - ignoring incorrect data");
-                            // Note that we get automatic hysteresis because we only stop using measurements via this method when the speed drops below the cutoff.
-                        }
-                        divergence_test_counter_[axis] = -1;  // Already run
-                    }
+                    orientation_offset_is_updating_[axis] = false;  // No longer updating, but still set
+                    // Invalid - don't update the offset estimate, and can still not use the data
                 }
             }
             else if (orientation_offset_has_been_set_[axis])
@@ -191,22 +224,30 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                 // Only warn if already has received the data. Otherwise, a ton of warnings
                 //  during initialization.
                 RF_TOOLS_DEBUG("Stale state data for use in calculating " + axis_name + " offset\n");
+                orientation_offset_is_updating_[axis] = false;  // Not updating
             }
-            if (orientation_offset_has_been_set_[axis])  // Calculated at least once (these don't time out)
+            if(is_valid[axis])
             {
-                orientation_measurement[axis] += orientation_offset_[axis];
-                measurement_variance[axis] += orientation_offset_variance_[axis];
+                if (orientation_offset_has_been_set_[axis])  // Calculated at least once (these don't time out)
+                {
+                    orientation_measurement[axis] += orientation_offset_[axis];
+                    measurement_variance[axis] += orientation_offset_variance_[axis];
 
-                std::string debug_info;
-                debug_info += "    Corrected IMU " + axis_name + ": " + std::to_string(orientation_measurement[axis] * 180 / M_PI) + " deg\n";
-                debug_info += "    Corrected IMU var: " + std::to_string(measurement_variance[axis]) + " rad^2\n";
-                RF_TOOLS_VERBOSE("IMU dynamic correction:\n" << debug_info.c_str());
+                    std::string debug_info;
+                    debug_info += "    Corrected IMU " + axis_name + ": " + std::to_string(orientation_measurement[axis] * 180 / M_PI) + " deg\n";
+                    debug_info += "    Corrected IMU var: " + std::to_string(measurement_variance[axis]) + " rad^2\n";
+                    RF_TOOLS_VERBOSE("IMU dynamic correction:\n" << debug_info.c_str());
+                }
+                else
+                {
+                    RF_TOOLS_VERBOSE("No offset information for " + axis_name + "\n");
+                    // Cannot create the pose measurement yet - there is no offset information or it has been flagged as invalid
+                    is_valid[axis] = false;
+                }
             }
             else
             {
-                RF_TOOLS_VERBOSE("No offset information for " + axis_name + "\n");
-                // Cannot create the pose measurement yet - there is no offset information or it has been flagged as invalid
-                is_valid[axis] = false;
+                RF_TOOLS_VERBOSE("Invalid data for axis " << axis_name << ". Not updating.\n");
             }
         }
         else
@@ -214,6 +255,7 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
             is_valid.push_back(false);  // Not being used/estimated
         }
     }
+    mtx_.unlock();
 }
 
 }  // namespace RobotLocalization

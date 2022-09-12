@@ -1612,11 +1612,15 @@ namespace RobotLocalization
               double max_divergence = M_PI * 2.0;  // Any divergence by default
               nhLocal_.param(correction_max_divergence, max_divergence, max_divergence);
 
+              std::string correction_max_exceeding = dynamic_magnetometer_correction + std::string("_max_num_divergences");
+              int max_exceeding = 0;  // No limit
+              nhLocal_.param(correction_max_exceeding, max_exceeding, max_exceeding);
+
               // Add the data for handling the dynamic correction
               std::string dynamic_correction_topic = imuTopicName + std::string("_pose");
               imuDynamicCorrectionData_.insert(std::pair<std::string const, RosFilterBiasEstimator>(
                 dynamic_correction_topic, RosFilterBiasEstimator(min_speed, max_variance, alpha,
-                max_divergence, false)));  // Default to invalid unless confirmed via an external system
+                max_divergence, max_exceeding, false)));  // Default to invalid unless confirmed via an external system
               // Set the dynamic corrections axes
               std::vector<bool> dynamic_correction_axes;
               dynamic_correction_axes.push_back((poseUpdateVec[StateMemberRoll] > 0) ? true : false);
@@ -3126,9 +3130,9 @@ namespace RobotLocalization
           std::vector<bool> estimation_axes;
           imuDynamicCorrectionData_[topicName].get_estimation_axes(estimation_axes);
           bool can_update = (is_bias_valid.size() > 0) && (estimation_axes.size() > 0);
-          for(uint8_t axis = 0; ((axis < is_bias_valid.size()) && (can_update == true)); axis++)
+          for(uint8_t axis = 0; ((axis < is_bias_valid.size()) && (can_update)); axis++)
           {
-            if((estimation_axes[axis] == true) && (is_bias_valid[axis] == false)) {
+            if((estimation_axes[axis]) && (!is_bias_valid[axis])) {
               can_update = false;
             }
           }
@@ -3138,13 +3142,14 @@ namespace RobotLocalization
             // Update
             for(uint8_t axis = 0; axis < estimation_axes.size(); axis++)
             {
-              if(estimation_axes[axis] == true)
+              if(estimation_axes[axis])
               {
                 switch(axis)
                 {
                   case 0:
                   {
                     // Roll
+                    RF_VERBOSE("roll measurement " << bias_measurement[axis] << " roll variance " << bias_variance[axis] << ".\n");
                     measurement(StateMemberRoll) = bias_measurement[axis];
                     measurementCovariance(POSE_SIZE - 3, POSE_SIZE - 3) = bias_variance[axis];
                     break;
@@ -3152,6 +3157,7 @@ namespace RobotLocalization
                   case 1:
                   {
                     // Pitch
+                    RF_VERBOSE("Pitch measurement " << bias_measurement[axis] << " Pitch variance " << bias_variance[axis] << ".\n");
                     measurement(StateMemberPitch) = bias_measurement[axis];
                     measurementCovariance(POSE_SIZE - 2, POSE_SIZE - 2) = bias_variance[axis];
                     break;
@@ -3159,6 +3165,7 @@ namespace RobotLocalization
                   case 2:
                   {
                     // Yaw
+                    RF_VERBOSE("Yaw measurement " << bias_measurement[axis] << " Yaw variance " << bias_variance[axis] << ".\n");
                     measurement(StateMemberYaw) = bias_measurement[axis];
                     measurementCovariance(POSE_SIZE - 1, POSE_SIZE - 1) = bias_variance[axis];
                     break;
