@@ -596,7 +596,7 @@ namespace RobotLocalization
   {
     RF_VERBOSE("Received correction data for topic " << topicName << "\n");
     // Save the time for timeout control
-    imuDynamicCorrectionData_[topicName].last_state_received_s_ = msg->header.stamp.toSec();
+    double time_s = msg->header.stamp.toSec();
     // Save the yaw and yaw variance information
     double roll, pitch, yaw;
     tf2::Quaternion q = tf2::Quaternion(msg->pose.pose.orientation.x,
@@ -604,13 +604,37 @@ namespace RobotLocalization
                                         msg->pose.pose.orientation.z,
                                         msg->pose.pose.orientation.w);
     tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
-    imuDynamicCorrectionData_[topicName].last_yaw_estimate_ = yaw;
-    imuDynamicCorrectionData_[topicName].last_yaw_variance_ = msg->pose.covariance[35];
+    Eigen::Vector3d orientation = {roll, pitch, yaw};
+    Eigen::Vector3d variance = {
+      msg->pose.covariance[21],
+      msg->pose.covariance[28],
+      msg->pose.covariance[35]};
     // Save the speed information
-    imuDynamicCorrectionData_[topicName].last_speed_ =
+    double speed =
       sqrt(msg->twist.twist.linear.x * msg->twist.twist.linear.x +
            msg->twist.twist.linear.y * msg->twist.twist.linear.y +
            msg->twist.twist.linear.z * msg->twist.twist.linear.z);
+    // Pass it in/save it all
+    if(imuDynamicCorrectionData_.find(topicName) != imuDynamicCorrectionData_.end())
+    {
+      imuDynamicCorrectionData_[topicName].setImuDynamicCorrectionData(orientation, variance, speed, time_s);
+    }
+  }
+
+  template<typename T>
+  void RosFilter<T>::imuMagnetometerValidityCallback(const std_msgs::Bool::ConstPtr &msg,
+                                                     const std::string &topicName)
+  {
+    // RF_VERBOSE provides this info in the debug file inline with the received and
+    //  and processed data, so is highly useful
+    RF_VERBOSE("Received magnetometer validity data for topic " << topicName <<
+      " with validity " << ((msg->data) ? "valid\n" : "invalid\n"));
+    // If this information is to be provided via a ROS stream, do so from the provider
+    // Pass it in/save it all
+    if(imuDynamicCorrectionData_.find(topicName) != imuDynamicCorrectionData_.end())
+    {
+      imuDynamicCorrectionData_[topicName].set_valid(msg->data);
+    }
   }
 
   template<typename T>
@@ -1587,16 +1611,40 @@ namespace RobotLocalization
               double alpha = 0.0;  // Full reliance on new measurement by default
               nhLocal_.param(correction_alpha, alpha, alpha);
 
+              std::string correction_max_divergence = dynamic_magnetometer_correction + std::string("_max_divergence");
+              double max_divergence = M_PI * 2.0;  // Any divergence by default
+              nhLocal_.param(correction_max_divergence, max_divergence, max_divergence);
+
+              std::string correction_max_exceeding = dynamic_magnetometer_correction + std::string("_max_num_divergences");
+              int max_exceeding = 0;  // No limit
+              nhLocal_.param(correction_max_exceeding, max_exceeding, max_exceeding);
+
               // Add the data for handling the dynamic correction
               std::string dynamic_correction_topic = imuTopicName + std::string("_pose");
-              imuDynamicCorrectionData_.insert(std::pair<std::string, ImuDynamicCorrectionData>(
-                dynamic_correction_topic, ImuDynamicCorrectionData(min_speed, max_variance, alpha)));
+              imuDynamicCorrectionData_.insert(std::pair<std::string const, RosFilterBiasEstimator>(
+                dynamic_correction_topic, RosFilterBiasEstimator(min_speed, max_variance, alpha,
+                max_divergence, max_exceeding, false)));  // Default to invalid unless confirmed via an external system
+              // Set the dynamic corrections axes
+              std::vector<bool> dynamic_correction_axes;
+              dynamic_correction_axes.push_back((poseUpdateVec[StateMemberRoll] > 0) ? true : false);
+              dynamic_correction_axes.push_back((poseUpdateVec[StateMemberPitch] > 0) ? true : false);
+              dynamic_correction_axes.push_back((poseUpdateVec[StateMemberYaw] > 0) ? true : false);
+              imuDynamicCorrectionData_[dynamic_correction_topic].set_estimation_axes(dynamic_correction_axes);
+              // Set debug info
+              imuDynamicCorrectionData_[dynamic_correction_topic].setDebugInfo(
+                filter_.getDebug(), filter_.getVerbose());
               RF_VERBOSE("Added dynamic orientation correction for topic " <<
                 dynamic_correction_topic << "\n");
-
               topicSubs_.push_back(
                 nh_.subscribe<nav_msgs::Odometry>(imuCorrectionTopic, imuQueueSize,
                   boost::bind(&RosFilter<T>::imuDynamicCorrectionCallback, this, _1,
+                    dynamic_correction_topic), ros::VoidPtr(),
+                    ros::TransportHints().tcpNoDelay(nodelayImu)));
+              
+              // Subscribe to validity data as well
+              topicSubs_.push_back(
+                nh_.subscribe<std_msgs::Bool>(imuTopic + std::string("/magnetometer_valid"), imuQueueSize,
+                  boost::bind(&RosFilter<T>::imuMagnetometerValidityCallback, this, _1,
                     dynamic_correction_topic), ros::VoidPtr(),
                     ros::TransportHints().tcpNoDelay(nodelayImu)));
             }
@@ -3063,102 +3111,101 @@ namespace RobotLocalization
         //  apply it since all rotations into the proper frame have concluded.
         if(imuDynamicCorrectionData_.find(topicName) != imuDynamicCorrectionData_.end())
         {
-          // We have data.
-          if ((imuDynamicCorrectionData_[topicName].last_state_received_s_ > 0.0) &&
-            ((msg->header.stamp.toSec() - imuDynamicCorrectionData_[topicName].last_state_received_s_) < filter_.getSensorTimeout()))
+          // Create the call information
+          Eigen::Vector3d bias_measurement = {roll, pitch, yaw};
+          Eigen::Vector3d bias_variance = {measurementCovariance(POSE_SIZE - 3, POSE_SIZE - 3),
+                                           measurementCovariance(POSE_SIZE - 2, POSE_SIZE - 2),
+                                           measurementCovariance(POSE_SIZE - 1, POSE_SIZE - 1)};
+          
+          // Get the current estimate to pass in as well
+          const Eigen::VectorXd &state = filter_.getState();
+          Eigen::Vector3d orientation_estimate = {state(StateMemberRoll), state(StateMemberPitch), state(StateMemberYaw)};
+          const Eigen::MatrixXd &estimateErrorCovariance = filter_.getEstimateErrorCovariance();
+          Eigen::Vector3d estimate_variance = {estimateErrorCovariance(POSE_SIZE - 3, POSE_SIZE - 3),
+                                               estimateErrorCovariance(POSE_SIZE - 2, POSE_SIZE - 2),
+                                               estimateErrorCovariance(POSE_SIZE - 1, POSE_SIZE - 1)};
+          std::vector<bool> is_bias_valid;  // Return value
+          imuDynamicCorrectionData_[topicName].updateBiasEstimate(
+              bias_measurement, bias_variance,
+              filter_.getSensorTimeout(), msg->header.stamp.toSec(),
+              orientation_estimate, estimate_variance,
+              is_bias_valid, debugStream_);
+          std::vector<bool> estimation_axes;
+          imuDynamicCorrectionData_[topicName].get_estimation_axes(estimation_axes);
+          bool can_update = (is_bias_valid.size() > 0) && (estimation_axes.size() > 0);
+          for(uint8_t axis = 0; ((axis < is_bias_valid.size()) && (can_update)); axis++)
           {
-            if((imuDynamicCorrectionData_[topicName].last_yaw_variance_ < imuDynamicCorrectionData_[topicName].max_yaw_variance_) &&
-              (imuDynamicCorrectionData_[topicName].last_speed_ > imuDynamicCorrectionData_[topicName].min_speed_))
-            {
-              // Should be subtracted (-) since the offset is a difference.
-              // The alpha-beta filter is rather special here, as it has to account for a few issues. First, how do we initialize it?
-              //  If initialized to zero, that means the yaw offset is assumed to be zero to start, with the resulting slow adjustments to
-              //  the filtered correction. The problem is that it's not zero. Without a better set of information (e.g. stored data from
-              //  a previous run), the best way is to initialize it with a jump to the first calculation, then run the filter.
-              // Because the alpha-beta filter is maintaining history, angle wrapping is a problem if not handled.
-              //  To correct this, we will always keep the offset in the range [-PI, PI]. The actual yaw angle
-              //  wrapping is handled by the Kalman filter. The offset angle wrapping needs to be handled here. The additional step is what
-              //  happens when the angle steps over the boundary (e.g. from -(PI-0.0001) to (PI-0.0001)). That is explained and handled in the
-              //  else condition.
-              double yaw_offset = FilterUtilities::clampRotation(imuDynamicCorrectionData_[topicName].last_yaw_estimate_ - yaw);
-              if(::fabs(imuDynamicCorrectionData_[topicName].yaw_offset_) < 1e-9)
-              {
-                // Has not been initialized
-                imuDynamicCorrectionData_[topicName].yaw_offset_ = yaw_offset;
-                // Should be added (+) since these are variances
-                imuDynamicCorrectionData_[topicName].yaw_offset_variance_ =
-                  measurementCovariance(POSE_SIZE - 1, POSE_SIZE - 1) + imuDynamicCorrectionData_[topicName].last_yaw_variance_;
-              }
-              else
-              {
-                // Has been initialized - use the alpha-beta filter
-                // Use an alternate formulation to enable handling angle wrapping.
-                // new = alpha*previous + (1-alpha)*current => new = alpha*(previous-current) + current
-                // With rotation clamping to the [-pi, pi] range: clampRotation(alpha*clampRotation(previous-current) + current)
-                //  E.g. previous = 175, current = -175, alpha = 0.8 (in degrees for ease of understanding - the real system is in radians)
-                //  Then: new = clampRotation(0.8*clampRotation(175--175) + -175)
-                //  new = clampRotation(0.8*clampRotation(350) - 175)
-                //  new = clampRotation(0.8*-10 - 175)
-                //  new = clampRotation(-8 - 175)
-                //  new = clampRotation(-183)
-                //  new = 177
-                imuDynamicCorrectionData_[topicName].yaw_offset_ =
-                  FilterUtilities::clampRotation(imuDynamicCorrectionData_[topicName].alpha_ *
-                                                 FilterUtilities::clampRotation(imuDynamicCorrectionData_[topicName].yaw_offset_ - yaw_offset) + yaw_offset);
-
-                // Should be added (+) since these are variances.
-                // Note that the variance is not an actual angle, so angle wrapping is not required.
-                imuDynamicCorrectionData_[topicName].yaw_offset_variance_ =
-                  imuDynamicCorrectionData_[topicName].alpha_ *
-                  imuDynamicCorrectionData_[topicName].yaw_offset_variance_ +
-                  (1.0 - imuDynamicCorrectionData_[topicName].alpha_) *
-                  (imuDynamicCorrectionData_[topicName].last_yaw_variance_ + measurementCovariance(POSE_SIZE - 1, POSE_SIZE - 1));
-              }
-              // Calculated at least once
-              imuDynamicCorrectionData_[topicName].yaw_offset_has_been_set_ = true;
-              std::string debug_info;
-              debug_info += "    EKF 1 yaw: " + std::to_string(imuDynamicCorrectionData_[topicName].last_yaw_estimate_ * 180 / M_PI) + " deg\n";
-              debug_info += "    EKF 1 yaw var: " + std::to_string(imuDynamicCorrectionData_[topicName].last_yaw_variance_) + " rad^2\n";
-              debug_info += "    Uncorrected IMU yaw: " + std::to_string(yaw * 180 / M_PI) + " deg\n";
-              debug_info += "    Uncorrected IMU var: " + std::to_string(measurementCovariance(POSE_SIZE - 1, POSE_SIZE - 1)) + " rad^2\n";
-              debug_info += "    IMU offset: " + std::to_string(imuDynamicCorrectionData_[topicName].yaw_offset_ * 180 / M_PI) + " deg\n";
-              debug_info += "    IMU offset var: " + std::to_string(imuDynamicCorrectionData_[topicName].yaw_offset_variance_) + " rad^2\n";
-              RF_VERBOSE("IMU dynamic correction:\n" << debug_info.c_str());
-            }
-            else if (imuDynamicCorrectionData_[topicName].last_speed_ > imuDynamicCorrectionData_[topicName].min_speed_) {
-              // Moving fast enough, but variance too high. Log since there is a potential divergence case here.
-              ROS_WARN_STREAM_THROTTLE(2.0, "Cannot update dynamic corrections due to variance limit - check for accurate bias estimate.");
-            }
-            else
-            {
-              RF_VERBOSE("Cannot update dynamic correction with speed: " <<
-                std::to_string(imuDynamicCorrectionData_[topicName].last_speed_) << " < " <<
-                imuDynamicCorrectionData_[topicName].min_speed_ << " or yaw variance: " <<
-                imuDynamicCorrectionData_[topicName].last_yaw_variance_ << " > " <<
-                imuDynamicCorrectionData_[topicName].max_yaw_variance_ << "\n");
+            if((estimation_axes[axis]) && (!is_bias_valid[axis])) {
+              can_update = false;
             }
           }
-          else if (imuDynamicCorrectionData_[topicName].yaw_offset_has_been_set_)
-          {
-            // Only warn if already has received the data. Otherwise, a ton of warnings
-            //  during initialization.
-            RF_DEBUG("Stale state data for use in calculating yaw offset\n");
-          }
-          if (imuDynamicCorrectionData_[topicName].yaw_offset_has_been_set_)  // Calculated at least once (these don't time out)
-          {
-            measurement(StateMemberYaw) += imuDynamicCorrectionData_[topicName].yaw_offset_;
-            measurementCovariance(POSE_SIZE - 1, POSE_SIZE - 1) += imuDynamicCorrectionData_[topicName].yaw_offset_variance_;
 
-            std::string debug_info;
-            debug_info += "    Corrected IMU yaw: " + std::to_string(measurement(StateMemberYaw) * 180 / M_PI) + " deg\n";
-            debug_info += "    Corrected IMU var: " + std::to_string(measurementCovariance(POSE_SIZE - 1, POSE_SIZE - 1)) + " rad^2\n";
-            RF_VERBOSE("IMU dynamic correction:\n" << debug_info.c_str());
+          if(can_update == true)
+          {
+            // Update
+            for(uint8_t axis = 0; axis < estimation_axes.size(); axis++)
+            {
+              if(estimation_axes[axis])
+              {
+                switch(axis)
+                {
+                  case 0:
+                  {
+                    // Roll
+                    RF_VERBOSE("roll measurement " << bias_measurement[axis] << " roll variance " << bias_variance[axis] << ".\n");
+                    measurement(StateMemberRoll) = bias_measurement[axis];
+                    measurementCovariance(POSE_SIZE - 3, POSE_SIZE - 3) = bias_variance[axis];
+                    break;
+                  }
+                  case 1:
+                  {
+                    // Pitch
+                    RF_VERBOSE("Pitch measurement " << bias_measurement[axis] << " Pitch variance " << bias_variance[axis] << ".\n");
+                    measurement(StateMemberPitch) = bias_measurement[axis];
+                    measurementCovariance(POSE_SIZE - 2, POSE_SIZE - 2) = bias_variance[axis];
+                    break;
+                  }
+                  case 2:
+                  {
+                    // Yaw
+                    RF_VERBOSE("Yaw measurement " << bias_measurement[axis] << " Yaw variance " << bias_variance[axis] << ".\n");
+                    measurement(StateMemberYaw) = bias_measurement[axis];
+                    measurementCovariance(POSE_SIZE - 1, POSE_SIZE - 1) = bias_variance[axis];
+                    break;
+                  }
+                  default:
+                  {
+                    // Do nothing
+                    break;
+                  }
+                }
+              }
+            }
+            // The ROS stream enables using this information without having to print the
+            //  verbose file during operation
+            if(!imuDynamicCorrectionData_[topicName].is_using_data())
+            {
+              // Just changed
+              ROS_INFO("Using magnetometer data.");
+              imuDynamicCorrectionData_[topicName].set_is_using_data(retVal);
+            }
           }
           else
           {
-            RF_VERBOSE("No offset information\n");
-            // Cannot create the pose measurement yet - there is no offset information.
+            // Cannot update
             retVal = false;
+            // The ROS stream enables using this information without having to print the
+            //  verbose file during operation
+            if(imuDynamicCorrectionData_[topicName].is_using_data())
+            {
+              // Just changed
+              ROS_WARN("Not using magnetometer data due to %s",
+                ((imuDynamicCorrectionData_[topicName].is_valid()) ? " internal check." : " external validity check"));
+              imuDynamicCorrectionData_[topicName].set_is_using_data(retVal);
+            }
+            // The RF_VERBOSE file enables seeing this data inline with the rest of
+            //  the received and processed data.
+            RF_VERBOSE("Not using magnetometer data.");
           }
         }
 

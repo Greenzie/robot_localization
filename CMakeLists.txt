@@ -49,7 +49,7 @@ if(NOT EIGEN3_FOUND)
   set(EIGEN_PACKAGE Eigen)
 endif()
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 
 if(NOT MSVC)
   set_directory_properties(PROPERTIES COMPILE_OPTIONS "-Wall;-Werror")
@@ -92,6 +92,7 @@ catkin_package(
     navsat_transform_nodelet
     ros_filter
     ros_filter_utilities
+    ros_filter_bias_estimator
     robot_localization_estimator
     ros_robot_localization_listener
     ukf
@@ -140,6 +141,7 @@ add_library(ukf src/ukf.cpp)
 add_library(robot_localization_estimator src/robot_localization_estimator.cpp)
 add_library(ros_robot_localization_listener src/ros_robot_localization_listener.cpp)
 add_library(ros_filter_utilities src/ros_filter_utilities.cpp)
+add_library(ros_filter_bias_estimator src/ros_filter_bias_estimator.cpp)
 add_library(ros_filter src/ros_filter.cpp)
 add_library(navsat_transform src/navsat_transform.cpp)
 add_library(ekf_localization_nodelet src/ekf_localization_nodelet.cpp)
@@ -160,10 +162,11 @@ add_dependencies(robot_localization_listener_node ${PROJECT_NAME}_gencpp)
 # Linking
 target_link_libraries(ros_filter_utilities ${catkin_LIBRARIES} ${EIGEN3_LIBRARIES})
 target_link_libraries(filter_utilities ${catkin_LIBRARIES} ${EIGEN3_LIBRARIES})
+target_link_libraries(ros_filter_bias_estimator filter_utilities ${catkin_LIBRARIES} ${EIGEN3_LIBRARIES})
 target_link_libraries(filter_base filter_utilities ${catkin_LIBRARIES} ${EIGEN3_LIBRARIES})
 target_link_libraries(ekf filter_base ${catkin_LIBRARIES} ${EIGEN3_LIBRARIES})
 target_link_libraries(ukf filter_base ${catkin_LIBRARIES} ${EIGEN3_LIBRARIES})
-target_link_libraries(ros_filter ekf ukf ros_filter_utilities ${catkin_LIBRARIES} ${EIGEN3_LIBRARIES})
+target_link_libraries(ros_filter ekf ukf ros_filter_utilities ros_filter_bias_estimator ${catkin_LIBRARIES} ${EIGEN3_LIBRARIES})
 target_link_libraries(robot_localization_estimator filter_utilities filter_base ekf ukf ${EIGEN3_LIBRARIES})
 target_link_libraries(ros_robot_localization_listener robot_localization_estimator ros_filter_utilities
   ${catkin_LIBRARIES} ${EIGEN3_LIBRARIES} ${YAML_CPP_LIBRARIES})
@@ -190,6 +193,7 @@ install(TARGETS
   navsat_transform_nodelet
   ros_filter
   ros_filter_utilities
+  ros_filter_bias_estimator
   robot_localization_estimator
   ros_robot_localization_listener
   ukf
