@@ -120,6 +120,8 @@ class RosFilterBiasEstimator {
             mtx_.unlock();
         }
         bool is_valid() const { return is_valid_; }
+        void set_is_using_data( bool is_using ) { using_data_ = is_using; }
+        bool is_using_data() const { return using_data_; }
     private:
         // Time of last state received in seconds
         double uncorrected_state_received_s_{0.0};
@@ -158,6 +160,9 @@ class RosFilterBiasEstimator {
 
         // External validity check - defaults to true to enable no checks with optional override on construction
         bool is_valid_{true};
+
+        // Used in conjunction with ros_filter for checking on-change conditions
+        bool using_data_{false};
 
         // Whether no longer trying again
         int num_exceeded_max_divergence_{ 0 };

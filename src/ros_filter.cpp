@@ -625,8 +625,11 @@ namespace RobotLocalization
   void RosFilter<T>::imuMagnetometerValidityCallback(const std_msgs::Bool::ConstPtr &msg,
                                                      const std::string &topicName)
   {
+    // RF_VERBOSE provides this info in the debug file inline with the received and
+    //  and processed data, so is highly useful
     RF_VERBOSE("Received magnetometer validity data for topic " << topicName <<
       " with validity " << ((msg->data) ? "valid\n" : "invalid\n"));
+    // If this information is to be provided via a ROS stream, do so from the provider
     // Pass it in/save it all
     if(imuDynamicCorrectionData_.find(topicName) != imuDynamicCorrectionData_.end())
     {
@@ -3178,12 +3181,31 @@ namespace RobotLocalization
                 }
               }
             }
+            // The ROS stream enables using this information without having to print the
+            //  verbose file during operation
+            if(!imuDynamicCorrectionData_[topicName].is_using_data())
+            {
+              // Just changed
+              ROS_INFO("Using magnetometer data.");
+              imuDynamicCorrectionData_[topicName].set_is_using_data(retVal);
+            }
           }
           else
           {
             // Cannot update
             retVal = false;
-            RF_VERBOSE("Unable to use magnetometer data.");
+            // The ROS stream enables using this information without having to print the
+            //  verbose file during operation
+            if(imuDynamicCorrectionData_[topicName].is_using_data())
+            {
+              // Just changed
+              ROS_WARN("Not using magnetometer data due to %s",
+                ((imuDynamicCorrectionData_[topicName].is_valid()) ? " internal check." : " external validity check"));
+              imuDynamicCorrectionData_[topicName].set_is_using_data(retVal);
+            }
+            // The RF_VERBOSE file enables seeing this data inline with the rest of
+            //  the received and processed data.
+            RF_VERBOSE("Not using magnetometer data.");
           }
         }
 
