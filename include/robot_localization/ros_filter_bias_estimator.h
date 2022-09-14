@@ -5,6 +5,7 @@
 #include <fstream>
 #include <vector>
 #include <mutex>
+#include <atomic>
 
 #define RF_TOOLS_DEBUG(msg) if (getDebug() || getVerbose()) { debug_stream << msg; }
 #define RF_TOOLS_VERBOSE(msg) if (getVerbose()) { debug_stream << msg; }
@@ -159,7 +160,7 @@ class RosFilterBiasEstimator {
         double max_divergence_{M_PI * 2.0};
 
         // External validity check - defaults to true to enable no checks with optional override on construction
-        bool is_valid_{true};
+        std::atomic<bool> is_valid_{true};
 
         // Used in conjunction with ros_filter for checking on-change conditions
         bool using_data_{false};
