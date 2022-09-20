@@ -84,15 +84,16 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
         if(estimation_axes_[axis])
         {
             // Set based on external system. Can be switched to false later based on internal tests
+            // Also include the lockout from too many failures
             bool can_still_update = (max_num_divergences_ < 1) || (num_exceeded_max_divergence_ < max_num_divergences_);
             is_valid.push_back(is_valid_ && can_still_update);
             // For logging
             std::string axis_name = (axis == 0) ? "roll" : (axis == 1) ? "pitch" : "yaw";
-            if ((uncorrected_state_received_s_ > 0.0) && ((time_s - uncorrected_state_received_s_) < sensor_timeout))
+            if (is_valid[axis]) // Only move forward if still valid
             {
-                if (is_valid[axis])
+                if ((uncorrected_state_received_s_ > 0.0) && ((time_s - uncorrected_state_received_s_) < sensor_timeout))
                 {
-                    // Has valid data for updating the offset estimate
+                    // Has current, valid data for updating the offset estimate
                     if((uncorrected_orientation_variance_[axis] < max_orientation_variance_) && (uncorrected_speed_ > min_speed_))
                     {
                         // For handling the required time until can run a divergence check
@@ -185,6 +186,7 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                         // Moving fast enough, but variance too high. Log since there is a potential divergence case here.
                         RF_TOOLS_VERBOSE("Cannot update dynamic corrections due to variance limit - check for accurate bias estimate.");
                         orientation_offset_is_updating_[axis] = false;  // Not updating
+                        // Don't update the estimate, but keep the bias set since it's just avoiding noise at the moment
                     }
                     else
                     {
@@ -213,46 +215,44 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                         orientation_offset_is_updating_[axis] = false;  // Not updating
                     }
                 }
-                else
+                else if (orientation_offset_has_been_set_[axis])
                 {
-                    orientation_offset_is_updating_[axis] = false;  // No longer updating, but still set
-                    // Invalid - don't update the offset estimate, and can still not use the data
-                }
-            }
-            else if (orientation_offset_has_been_set_[axis])
-            {
-                // Only warn if already has received the data. Otherwise, a ton of warnings
-                //  during initialization.
-                RF_TOOLS_DEBUG("Stale state data for use in calculating " + axis_name + " offset\n");
-                orientation_offset_is_updating_[axis] = false;  // Not updating
-            }
-            if(is_valid[axis])
-            {
-                if (orientation_offset_has_been_set_[axis])  // Calculated at least once (these don't time out)
-                {
-                    orientation_measurement[axis] += orientation_offset_[axis];
-                    measurement_variance[axis] += orientation_offset_variance_[axis];
-
-                    std::string debug_info;
-                    debug_info += "    Corrected IMU " + axis_name + ": " + std::to_string(orientation_measurement[axis] * 180 / M_PI) + " deg\n";
-                    debug_info += "    Corrected IMU var: " + std::to_string(measurement_variance[axis]) + " rad^2\n";
-                    RF_TOOLS_VERBOSE("IMU dynamic correction:\n" << debug_info.c_str());
-                }
-                else
-                {
-                    RF_TOOLS_VERBOSE("No offset information for " + axis_name + "\n");
-                    // Cannot create the pose measurement yet - there is no offset information or it has been flagged as invalid
-                    is_valid[axis] = false;
+                    // Only warn if already has received the data. Otherwise, a ton of warnings
+                    //  during initialization.
+                    RF_TOOLS_DEBUG("Stale state data for use in calculating " + axis_name + " offset\n");
+                    orientation_offset_is_updating_[axis] = false;  // Not updating
+                    // Note: do not reset the has_been_set flag since it's possibly just running at a different rate
                 }
             }
             else
             {
-                RF_TOOLS_VERBOSE("Invalid data for axis " << axis_name << ". Not updating.\n");
+                // Invalid data - cannot update, so don't use it
+                orientation_offset_has_been_set_[axis] = false;  // Prep for a smooth restart
+                orientation_offset_is_updating_[axis] = false;  // No longer updating
+            }
+
+            // Independently check since this is different than whether the data itself is valid
+            if (orientation_offset_has_been_set_[axis])  // Calculated at least once
+            {
+                orientation_measurement[axis] += orientation_offset_[axis];
+                measurement_variance[axis] += orientation_offset_variance_[axis];
+
+                std::string debug_info;
+                debug_info += "    Corrected IMU " + axis_name + ": " + std::to_string(orientation_measurement[axis] * 180 / M_PI) + " deg\n";
+                debug_info += "    Corrected IMU var: " + std::to_string(measurement_variance[axis]) + " rad^2\n";
+                RF_TOOLS_VERBOSE("IMU dynamic correction:\n" << debug_info.c_str());
+            }
+            else
+            {
+                RF_TOOLS_VERBOSE("Unavailable offset information for " + axis_name + "\n");
+                // Cannot create the pose measurement yet - there is no offset information or it has been flagged as invalid
+                is_valid[axis] = false;
             }
         }
         else
         {
-            is_valid.push_back(false);  // Not being used/estimated
+            // Not being used/estimated
+            is_valid.push_back(false);
         }
     }
     mtx_.unlock();
