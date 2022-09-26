@@ -1610,6 +1610,11 @@ namespace RobotLocalization
               std::string correction_alpha = dynamic_magnetometer_correction + std::string("_alpha");
               double alpha = 0.0;  // Full reliance on new measurement by default
               nhLocal_.param(correction_alpha, alpha, alpha);
+              if( alpha > 1.0)
+              {
+                ROS_WARN("Alpha must be <= 1.0 to be valid. Resetting from %10.5f to 1.0", alpha);
+                alpha = 1.0;
+              }
 
               std::string correction_max_divergence = dynamic_magnetometer_correction + std::string("_max_divergence");
               double max_divergence = M_PI * 2.0;  // Any divergence by default
