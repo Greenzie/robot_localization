@@ -1607,6 +1607,10 @@ namespace RobotLocalization
               double max_variance = M_PI * M_PI;  // Accept unknown angles by default
               nhLocal_.param(correction_max_variance, max_variance, max_variance);
 
+              std::string correction_initial_delay = dynamic_magnetometer_correction + std::string("_initial_delay");
+              double initial_delay = 0.0;  // Default no initial delay
+              nhLocal_.param(correction_initial_delay, initial_delay, initial_delay);
+
               std::string correction_alpha = dynamic_magnetometer_correction + std::string("_alpha");
               double alpha = 0.0;  // Full reliance on new measurement by default
               nhLocal_.param(correction_alpha, alpha, alpha);
@@ -1628,7 +1632,8 @@ namespace RobotLocalization
               std::string dynamic_correction_topic = imuTopicName + std::string("_pose");
               imuDynamicCorrectionData_.insert(std::pair<std::string const, RosFilterBiasEstimator>(
                 dynamic_correction_topic, RosFilterBiasEstimator(min_speed, max_variance, alpha,
-                max_divergence, max_exceeding, false)));  // Default to invalid unless confirmed via an external system
+                max_divergence, max_exceeding, initial_delay,
+                false)));  // Default to invalid unless confirmed via an external system
               // Set the dynamic corrections axes
               std::vector<bool> dynamic_correction_axes;
               dynamic_correction_axes.push_back((poseUpdateVec[StateMemberRoll] > 0) ? true : false);

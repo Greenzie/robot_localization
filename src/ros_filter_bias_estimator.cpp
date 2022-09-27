@@ -13,12 +13,14 @@ RosFilterBiasEstimator::RosFilterBiasEstimator(const double min_speed,
                                                const double alpha,
                                                const double max_divergence,
                                                const int max_num_divergences,
+                                               const double initial_delay,
                                                const bool is_valid) {
     set_min_speed(min_speed);
     set_max_orientation_variance(max_variance);
     set_alpha(alpha);
     set_max_divergence(max_divergence);
     set_max_num_divergences(max_num_divergences);
+    set_initial_delay(initial_delay);
     set_valid(is_valid);
 }
 
@@ -53,6 +55,8 @@ void RosFilterBiasEstimator::reset() {
     }
     uncorrected_orientation_estimate_.setZero();
     num_exceeded_max_divergence_ = 0;
+    start_time_ = 0.0;
+    initial_delay_met_ = false;
     mtx_.unlock();
 }
 
@@ -118,6 +122,8 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                             orientation_offset_[axis] = offset;
                             // Should be added (+) since these are variances
                             orientation_offset_variance_[axis] = measurement_variance[axis] + uncorrected_orientation_variance_[axis];
+                            // Set the start time to handle the delay
+                            start_time_ = time_s;
                         }
                         else
                         {
@@ -140,10 +146,15 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                             orientation_offset_variance_[axis] = alpha_ * orientation_offset_variance_[axis] +
                                 (1.0 - alpha_) * (uncorrected_orientation_variance_[axis] + measurement_variance[axis]);
                         }
+                        // Handle the initial delay - may be immediate if no delay set
+                        initial_delay_met_ |= ((time_s - start_time_) > initial_delay_);
+
                         // Calculate the difference between the two filters estimates
                         double abs_filter_difference = ::fabs(uncorrected_orientation_estimate_[axis] - orientation_estimate[axis]);
+
                         // Dropped below limit or calculated once with no limit
-                        orientation_offset_has_been_set_[axis] |= (abs_filter_difference < max_divergence_) | (max_divergence_ < 1e-9);
+                        orientation_offset_has_been_set_[axis] |= (initial_delay_met_) &&
+                            ((abs_filter_difference < max_divergence_) | (max_divergence_ < 1e-9));
 
                         // Handle the divergence test initialization
                         if(was_updating == false) {
