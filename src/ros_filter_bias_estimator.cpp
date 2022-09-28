@@ -39,6 +39,7 @@ RosFilterBiasEstimator::RosFilterBiasEstimator(const RosFilterBiasEstimator& rig
     right.get_estimation_axes(estimation_axes);
     set_estimation_axes(estimation_axes);
     set_max_num_divergences(right.get_max_num_divergences());
+    set_initial_delay(right.get_initial_delay());
 }
 
 void RosFilterBiasEstimator::reset() {
