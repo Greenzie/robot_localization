@@ -13,12 +13,14 @@ RosFilterBiasEstimator::RosFilterBiasEstimator(const double min_speed,
                                                const double alpha,
                                                const double max_divergence,
                                                const int max_num_divergences,
+                                               const double initial_delay,
                                                const bool is_valid) {
     set_min_speed(min_speed);
     set_max_orientation_variance(max_variance);
     set_alpha(alpha);
     set_max_divergence(max_divergence);
     set_max_num_divergences(max_num_divergences);
+    set_initial_delay(initial_delay);
     set_valid(is_valid);
 }
 
@@ -37,6 +39,7 @@ RosFilterBiasEstimator::RosFilterBiasEstimator(const RosFilterBiasEstimator& rig
     right.get_estimation_axes(estimation_axes);
     set_estimation_axes(estimation_axes);
     set_max_num_divergences(right.get_max_num_divergences());
+    set_initial_delay(right.get_initial_delay());
 }
 
 void RosFilterBiasEstimator::reset() {
@@ -53,6 +56,8 @@ void RosFilterBiasEstimator::reset() {
     }
     uncorrected_orientation_estimate_.setZero();
     num_exceeded_max_divergence_ = 0;
+    start_time_ = 0.0;
+    initial_delay_met_ = false;
     mtx_.unlock();
 }
 
@@ -84,15 +89,16 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
         if(estimation_axes_[axis])
         {
             // Set based on external system. Can be switched to false later based on internal tests
+            // Also include the lockout from too many failures
             bool can_still_update = (max_num_divergences_ < 1) || (num_exceeded_max_divergence_ < max_num_divergences_);
             is_valid.push_back(is_valid_ && can_still_update);
             // For logging
             std::string axis_name = (axis == 0) ? "roll" : (axis == 1) ? "pitch" : "yaw";
-            if ((uncorrected_state_received_s_ > 0.0) && ((time_s - uncorrected_state_received_s_) < sensor_timeout))
+            if (is_valid[axis]) // Only move forward if still valid
             {
-                if (is_valid[axis])
+                if ((uncorrected_state_received_s_ > 0.0) && ((time_s - uncorrected_state_received_s_) < sensor_timeout))
                 {
-                    // Has valid data for updating the offset estimate
+                    // Has current, valid data for updating the offset estimate
                     if((uncorrected_orientation_variance_[axis] < max_orientation_variance_) && (uncorrected_speed_ > min_speed_))
                     {
                         // For handling the required time until can run a divergence check
@@ -117,6 +123,8 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                             orientation_offset_[axis] = offset;
                             // Should be added (+) since these are variances
                             orientation_offset_variance_[axis] = measurement_variance[axis] + uncorrected_orientation_variance_[axis];
+                            // Set the start time to handle the delay
+                            start_time_ = time_s;
                         }
                         else
                         {
@@ -139,10 +147,16 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                             orientation_offset_variance_[axis] = alpha_ * orientation_offset_variance_[axis] +
                                 (1.0 - alpha_) * (uncorrected_orientation_variance_[axis] + measurement_variance[axis]);
                         }
-                        // Calculate the difference between the two filters estimates
-                        double abs_filter_difference = ::fabs(uncorrected_orientation_estimate_[axis] - orientation_estimate[axis]);
+                        // Handle the initial delay - may be immediate if no delay set
+                        initial_delay_met_ |= ((time_s - start_time_) >= initial_delay_);
+
+                        // Calculate the difference between the uncorrected filter estimate and the corrected magnetometer value
+                        double abs_filter_to_mag_difference = ::fabs(uncorrected_orientation_estimate_[axis] -
+                            (orientation_measurement[axis] + orientation_offset_[axis]));
+
                         // Dropped below limit or calculated once with no limit
-                        orientation_offset_has_been_set_[axis] |= (abs_filter_difference < max_divergence_) | (max_divergence_ < 1e-9);
+                        orientation_offset_has_been_set_[axis] |= ((initial_delay_met_) &&
+                            ((abs_filter_to_mag_difference < max_divergence_) | (max_divergence_ < 1e-9)));
 
                         // Handle the divergence test initialization
                         if(was_updating == false) {
@@ -152,16 +166,18 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                             // The calculation is from max_divergence_ = abs_filter_difference * alpha_^(divergence_test_steps_)
                             // divergence_test_steps_ = ln(max_divergence_ / abs_filter_difference) / ln(alpha_)
                             // Note that max_divergence_ must be < abs_filter_difference since alpha_ < 1.0
-                            if((max_divergence_ < abs_filter_difference) && (max_divergence_ > 0.0))
+                            double abs_filter_difference = ::fabs(uncorrected_orientation_estimate_[axis] - orientation_estimate[axis]);
+                            double max_difference = std::max(abs_filter_difference, abs_filter_to_mag_difference);
+                            if((max_divergence_ < max_difference) && (max_divergence_ > 0.0))
                             {
-                                divergence_test_steps_[axis] = round(log(max_divergence_ / abs_filter_difference) / log(alpha_));
+                                divergence_test_steps_[axis] = round(log(max_divergence_ / max_difference) / log(alpha_));
                             }
                             else
                             {
                                 divergence_test_steps_[axis] = 0;  // Already within tolerance
                             }
                             RF_TOOLS_VERBOSE("Required number of steps for axis " << axis_name <<
-                                " to test divergence: " << divergence_test_steps_[axis] << " given abs filter difference " << abs_filter_difference
+                                " to test divergence: " << divergence_test_steps_[axis] << " given abs difference " << max_difference
                                 << " and max difference " << max_divergence_ << "\n");
                             // Set the start counter
                             divergence_test_counter_[axis] = 0;
@@ -185,6 +201,7 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                         // Moving fast enough, but variance too high. Log since there is a potential divergence case here.
                         RF_TOOLS_VERBOSE("Cannot update dynamic corrections due to variance limit - check for accurate bias estimate.");
                         orientation_offset_is_updating_[axis] = false;  // Not updating
+                        // Don't update the estimate, but keep the bias set since it's just avoiding noise at the moment
                     }
                     else
                     {
@@ -213,46 +230,44 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                         orientation_offset_is_updating_[axis] = false;  // Not updating
                     }
                 }
-                else
+                else if (orientation_offset_has_been_set_[axis])
                 {
-                    orientation_offset_is_updating_[axis] = false;  // No longer updating, but still set
-                    // Invalid - don't update the offset estimate, and can still not use the data
-                }
-            }
-            else if (orientation_offset_has_been_set_[axis])
-            {
-                // Only warn if already has received the data. Otherwise, a ton of warnings
-                //  during initialization.
-                RF_TOOLS_DEBUG("Stale state data for use in calculating " + axis_name + " offset\n");
-                orientation_offset_is_updating_[axis] = false;  // Not updating
-            }
-            if(is_valid[axis])
-            {
-                if (orientation_offset_has_been_set_[axis])  // Calculated at least once (these don't time out)
-                {
-                    orientation_measurement[axis] += orientation_offset_[axis];
-                    measurement_variance[axis] += orientation_offset_variance_[axis];
-
-                    std::string debug_info;
-                    debug_info += "    Corrected IMU " + axis_name + ": " + std::to_string(orientation_measurement[axis] * 180 / M_PI) + " deg\n";
-                    debug_info += "    Corrected IMU var: " + std::to_string(measurement_variance[axis]) + " rad^2\n";
-                    RF_TOOLS_VERBOSE("IMU dynamic correction:\n" << debug_info.c_str());
-                }
-                else
-                {
-                    RF_TOOLS_VERBOSE("No offset information for " + axis_name + "\n");
-                    // Cannot create the pose measurement yet - there is no offset information or it has been flagged as invalid
-                    is_valid[axis] = false;
+                    // Only warn if already has received the data. Otherwise, a ton of warnings
+                    //  during initialization.
+                    RF_TOOLS_DEBUG("Stale state data for use in calculating " + axis_name + " offset\n");
+                    orientation_offset_is_updating_[axis] = false;  // Not updating
+                    // Note: do not reset the has_been_set flag since it's possibly just running at a different rate
                 }
             }
             else
             {
-                RF_TOOLS_VERBOSE("Invalid data for axis " << axis_name << ". Not updating.\n");
+                // Invalid data - cannot update, so don't use it
+                orientation_offset_has_been_set_[axis] = false;  // Prep for a smooth restart
+                orientation_offset_is_updating_[axis] = false;  // No longer updating
+            }
+
+            // Independently check since this is different than whether the data itself is valid
+            if (orientation_offset_has_been_set_[axis])  // Calculated at least once
+            {
+                orientation_measurement[axis] += orientation_offset_[axis];
+                measurement_variance[axis] += orientation_offset_variance_[axis];
+
+                std::string debug_info;
+                debug_info += "    Corrected IMU " + axis_name + ": " + std::to_string(orientation_measurement[axis] * 180 / M_PI) + " deg\n";
+                debug_info += "    Corrected IMU var: " + std::to_string(measurement_variance[axis]) + " rad^2\n";
+                RF_TOOLS_VERBOSE("IMU dynamic correction:\n" << debug_info.c_str());
+            }
+            else
+            {
+                RF_TOOLS_VERBOSE("Unavailable offset information for " + axis_name + "\n");
+                // Cannot create the pose measurement yet - there is no offset information or it has been flagged as invalid
+                is_valid[axis] = false;
             }
         }
         else
         {
-            is_valid.push_back(false);  // Not being used/estimated
+            // Not being used/estimated
+            is_valid.push_back(false);
         }
     }
     mtx_.unlock();

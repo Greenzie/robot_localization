@@ -26,15 +26,17 @@ class RosFilterBiasEstimator {
          * @param min_speed Minimum speed at which to update the bias estimator
          * @param max_variance Maximum variance at which to update the estimator
          * @param alpha Alpha term of the alpha-beta filter for the bias estimator
-         * @param max_divergence Maximum divergence between the feeder estimator and this estimator before rejecting the inputs
+         * @param max_divergence Maximum divergence between the feeder estimator and this estimator before rejecting the inputs (default is -1 meaning no check)
          * @param max_num_divergences: Maximum number of divergences before no longer trying to correct. 0 means infinite.
+         * @param initial_delay: double delay assuming the uncorrected EKF yaw estimate may be inaccurate for a bit
          * @param is_valid Enables defaulting the validity to false until confirmed by an external system
          */
         RosFilterBiasEstimator(const double min_speed,
                                const double max_variance,
                                const double alpha,
-                               const double max_divergence = M_PI * 2.0,
+                               const double max_divergence = -1.0,
                                const int max_num_divergences = 0,
+                               const double initial_delay = 0.0,
                                const bool is_valid = false);
     
         RosFilterBiasEstimator(const RosFilterBiasEstimator& right);
@@ -123,6 +125,8 @@ class RosFilterBiasEstimator {
         bool is_valid() const { return is_valid_; }
         void set_is_using_data( bool is_using ) { using_data_ = is_using; }
         bool is_using_data() const { return using_data_; }
+        void set_initial_delay(double initial_delay) { initial_delay_ = initial_delay; }
+        double get_initial_delay() const { return initial_delay_; }
     private:
         // Time of last state received in seconds
         double uncorrected_state_received_s_{0.0};
@@ -167,6 +171,15 @@ class RosFilterBiasEstimator {
 
         // Whether no longer trying again
         int num_exceeded_max_divergence_{ 0 };
+
+        // Initial delay assuming uncorrected KF yaw estimate may be incorrect for a bit
+        double initial_delay_{ 0.0 };
+
+        // For handling the initial delay
+        double start_time_{ 0.0 };
+
+        // To avoid constantly checking time differences
+        bool initial_delay_met_{ false };
 
         // Handling the times for the divergence test to determine whether it is valid
         int divergence_test_counter_[ESTIMATION_AXES] = {-1, -1, -1};
