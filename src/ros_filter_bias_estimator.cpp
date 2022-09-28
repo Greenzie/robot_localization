@@ -154,8 +154,8 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                         double abs_filter_difference = ::fabs(uncorrected_orientation_estimate_[axis] - orientation_estimate[axis]);
 
                         // Dropped below limit or calculated once with no limit
-                        orientation_offset_has_been_set_[axis] |= (initial_delay_met_) &&
-                            ((abs_filter_difference < max_divergence_) | (max_divergence_ < 1e-9));
+                        orientation_offset_has_been_set_[axis] |= ((initial_delay_met_) &&
+                            ((abs_filter_difference < max_divergence_) | (max_divergence_ < 1e-9)));
 
                         // Handle the divergence test initialization
                         if(was_updating == false) {
