@@ -150,12 +150,13 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                         // Handle the initial delay - may be immediate if no delay set
                         initial_delay_met_ |= ((time_s - start_time_) > initial_delay_);
 
-                        // Calculate the difference between the two filters estimates
-                        double abs_filter_difference = ::fabs(uncorrected_orientation_estimate_[axis] - orientation_estimate[axis]);
+                        // Calculate the difference between the uncorrected filter estimate and the corrected magnetometer value
+                        double abs_filter_to_mag_difference = ::fabs(uncorrected_orientation_estimate_[axis] -
+                            (orientation_measurement[axis] + orientation_offset_[axis]));
 
                         // Dropped below limit or calculated once with no limit
                         orientation_offset_has_been_set_[axis] |= ((initial_delay_met_) &&
-                            ((abs_filter_difference < max_divergence_) | (max_divergence_ < 1e-9)));
+                            ((abs_filter_to_mag_difference < max_divergence_) | (max_divergence_ < 1e-9)));
 
                         // Handle the divergence test initialization
                         if(was_updating == false) {
@@ -165,16 +166,18 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                             // The calculation is from max_divergence_ = abs_filter_difference * alpha_^(divergence_test_steps_)
                             // divergence_test_steps_ = ln(max_divergence_ / abs_filter_difference) / ln(alpha_)
                             // Note that max_divergence_ must be < abs_filter_difference since alpha_ < 1.0
-                            if((max_divergence_ < abs_filter_difference) && (max_divergence_ > 0.0))
+                            double abs_filter_difference = ::fabs(uncorrected_orientation_estimate_[axis] - orientation_estimate[axis]);
+                            double max_difference = std::max(abs_filter_difference, abs_filter_to_mag_difference);
+                            if((max_divergence_ < max_difference) && (max_divergence_ > 0.0))
                             {
-                                divergence_test_steps_[axis] = round(log(max_divergence_ / abs_filter_difference) / log(alpha_));
+                                divergence_test_steps_[axis] = round(log(max_divergence_ / max_difference) / log(alpha_));
                             }
                             else
                             {
                                 divergence_test_steps_[axis] = 0;  // Already within tolerance
                             }
                             RF_TOOLS_VERBOSE("Required number of steps for axis " << axis_name <<
-                                " to test divergence: " << divergence_test_steps_[axis] << " given abs filter difference " << abs_filter_difference
+                                " to test divergence: " << divergence_test_steps_[axis] << " given abs difference " << max_difference
                                 << " and max difference " << max_divergence_ << "\n");
                             // Set the start counter
                             divergence_test_counter_[axis] = 0;
