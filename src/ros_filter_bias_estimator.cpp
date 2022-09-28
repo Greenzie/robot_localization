@@ -148,7 +148,7 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                                 (1.0 - alpha_) * (uncorrected_orientation_variance_[axis] + measurement_variance[axis]);
                         }
                         // Handle the initial delay - may be immediate if no delay set
-                        initial_delay_met_ |= ((time_s - start_time_) > initial_delay_);
+                        initial_delay_met_ |= ((time_s - start_time_) >= initial_delay_);
 
                         // Calculate the difference between the uncorrected filter estimate and the corrected magnetometer value
                         double abs_filter_to_mag_difference = ::fabs(uncorrected_orientation_estimate_[axis] -
