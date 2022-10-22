@@ -1148,6 +1148,10 @@ namespace RobotLocalization
         nhLocal_.param(odomTopicName + std::string("_pose_rejection_threshold_initialize"),
                        poseMahalanobisThreshInit,
                        std::numeric_limits<double>::max());
+        double poseMahalanobisThreshTrusted;
+        nhLocal_.param(odomTopicName + std::string("_pose_rejection_threshold_trusted"),
+                       poseMahalanobisThreshTrusted,
+                       std::numeric_limits<double>::max());
 
         // Check for twist rejection threshold
         double twistMahalanobisThresh;
@@ -1157,6 +1161,10 @@ namespace RobotLocalization
         double twistMahalanobisThreshInit;
         nhLocal_.param(odomTopicName + std::string("_twist_rejection_threshold_initialize"),
                        twistMahalanobisThreshInit,
+                       std::numeric_limits<double>::max());
+        double twistMahalanobisThreshTrusted;
+        nhLocal_.param(odomTopicName + std::string("_twist_rejection_threshold_trusted"),
+                       twistMahalanobisThreshTrusted,
                        std::numeric_limits<double>::max());
 
         // Now pull in its boolean update vector configuration. Create separate vectors for pose
@@ -1282,6 +1290,10 @@ namespace RobotLocalization
         nhLocal_.param(poseTopicName + std::string("_rejection_threshold_initialize"),
                        poseMahalanobisThreshInit,
                        std::numeric_limits<double>::max());
+        double poseMahalanobisThreshTrusted;
+        nhLocal_.param(poseTopicName + std::string("_rejection_threshold_trusted"),
+                       poseMahalanobisThreshTrusted,
+                       std::numeric_limits<double>::max());
 
         int poseQueueSize = 1;
         nhLocal_.param(poseTopicName + "_queue_size", poseQueueSize, 1);
@@ -1368,6 +1380,10 @@ namespace RobotLocalization
         nhLocal_.param(twistTopicName + std::string("_rejection_threshold_initialize"),
                        twistMahalanobisThreshInit,
                        std::numeric_limits<double>::max());
+        double twistMahalanobisThreshTrusted;
+        nhLocal_.param(twistTopicName + std::string("_rejection_threshold_trusted"),
+                       twistMahalanobisThreshTrusted,
+                       std::numeric_limits<double>::max());
 
         int twistQueueSize = 1;
         nhLocal_.param(twistTopicName + "_queue_size", twistQueueSize, 1);
@@ -1451,6 +1467,10 @@ namespace RobotLocalization
         nhLocal_.param(imuTopicName + std::string("_pose_rejection_threshold_initialize"),
                        poseMahalanobisThreshInit,
                        std::numeric_limits<double>::max());
+        double poseMahalanobisThreshTrusted;
+        nhLocal_.param(imuTopicName + std::string("_pose_rejection_threshold_trusted"),
+                       poseMahalanobisThreshTrusted,
+                       std::numeric_limits<double>::max());
 
         // Check for angular velocity rejection threshold
         double twistMahalanobisThresh;
@@ -1461,6 +1481,10 @@ namespace RobotLocalization
         imuTwistRejectionName =
           imuTopicName + std::string("_twist_rejection_threshold_initialize");
         nhLocal_.param(imuTwistRejectionName, twistMahalanobisThreshInit, std::numeric_limits<double>::max());
+        double twistMahalanobisThreshTrusted;
+        imuTwistRejectionName =
+          imuTopicName + std::string("_twist_rejection_threshold_trusted");
+        nhLocal_.param(imuTwistRejectionName, twistMahalanobisThreshTrusted, std::numeric_limits<double>::max());
 
         // Check for acceleration rejection threshold
         double accelMahalanobisThresh;
@@ -1470,6 +1494,10 @@ namespace RobotLocalization
         double accelMahalanobisThreshInit;
         nhLocal_.param(imuTopicName + std::string("_linear_acceleration_rejection_threshold_initialize"),
                        accelMahalanobisThreshInit,
+                       std::numeric_limits<double>::max());
+        double accelMahalanobisThreshTrusted;
+        nhLocal_.param(imuTopicName + std::string("_linear_acceleration_rejection_threshold_trusted"),
+                       accelMahalanobisThreshTrusted,
                        std::numeric_limits<double>::max());
 
         bool removeGravAcc = false;
