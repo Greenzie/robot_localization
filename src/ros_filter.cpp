@@ -72,6 +72,7 @@ namespace RobotLocalization
       dynamicDiagErrorLevel_(diagnostic_msgs::DiagnosticStatus::OK),
       staticDiagErrorLevel_(diagnostic_msgs::DiagnosticStatus::OK),
       frequency_(30.0),
+      trusted_timeout_{-1.0},
       gravitationalAcc_(9.80665),
       historyLength_(0),
       minFrequency_(frequency_ - 2.0),
@@ -251,13 +252,20 @@ namespace RobotLocalization
       if (prepareAcceleration(msg, topicName, targetFrame, updateVectorCorrected, measurement,
             measurementCovariance))
       {
+        // Check which rejection threshold to use
+        double rejectionThreshold = callbackData.rejectionThreshold_;
+        if((sourceData_.find(topicName) != sourceData_.end() &&
+          (sourceData_[topicName].trusted_)))
+        {
+          rejectionThreshold = callbackData.rejectionThresholdTrusted_;
+        }
         // Store the measurement. Add an "acceleration" suffix so we know what kind of measurement
         // we're dealing with when we debug the core filter logic.
         enqueueMeasurement(topicName,
                            measurement,
                            measurementCovariance,
                            updateVectorCorrected,
-                           callbackData.rejectionThreshold_,
+                           rejectionThreshold,
                            callbackData.rejectionThresholdInit_,
                            msg->header.stamp);
 
@@ -638,6 +646,26 @@ namespace RobotLocalization
   }
 
   template<typename T>
+  void RosFilter<T>::trustedSensorCallback(const std_msgs::Bool::ConstPtr &msg,
+                                           const std::string &topicName)
+  {
+    // RF_VERBOSE provides this info in the debug file inline with the received and
+    //  and processed data, so is highly useful
+    RF_VERBOSE("Received trusted sensor data for topic " << topicName <<
+      " with trusted " << ((msg->data) ? "true\n" : "false\n"));
+    // If this information is to be provided via a ROS stream, do so from the provider
+    // Pass it in/save it all
+    if(sourceData_.find(topicName) == sourceData_.end())
+    {
+      // Create it
+      sourceData_.emplace(topicName, SourceData());
+    }
+    // Save the data
+    sourceData_[topicName].trusted_ = msg->data;
+    sourceData_[topicName].last_trusted_s_ = ros::Time::now().toSec();
+  }
+
+  template<typename T>
   void RosFilter<T>::integrateMeasurements(const ros::Time &currentTime)
   {
     const double currentTimeSec = currentTime.toSec();
@@ -914,6 +942,8 @@ namespace RobotLocalization
     nhLocal_.param("sensor_timeout", sensorTimeout, 1.0 / frequency_);
     filter_.setSensorTimeout(sensorTimeout);
 
+    nhLocal_.param("trusted_timeout", trusted_timeout_, -1.0);
+
     // Determine if we're in 2D mode
     nhLocal_.param("two_d_mode", twoDMode_, false);
 
@@ -1182,9 +1212,9 @@ namespace RobotLocalization
         nhLocal_.param(odomTopicName + "_queue_size", odomQueueSize, 1);
 
         const CallbackData poseCallbackData(odomTopicName + "_pose", poseUpdateVec, poseUpdateSum, differential,
-          relative, poseMahalanobisThresh, poseMahalanobisThreshInit);
+          relative, poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
         const CallbackData twistCallbackData(odomTopicName + "_twist", twistUpdateVec, twistUpdateSum, false, false,
-          twistMahalanobisThresh, twistMahalanobisThresh);
+          twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
 
         bool nodelayOdom = false;
         nhLocal_.param(odomTopicName + "_nodelay", nodelayOdom, false);
@@ -1196,6 +1226,18 @@ namespace RobotLocalization
             nh_.subscribe<nav_msgs::Odometry>(odomTopic, odomQueueSize,
               boost::bind(&RosFilter::odometryCallback, this, _1, odomTopicName, poseCallbackData, twistCallbackData),
               ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayOdom)));
+          
+          // Subscribe to trusted data as well
+          topicSubs_.push_back(
+            nh_.subscribe<std_msgs::Bool>(odomTopic + std::string("/trusted/pose"), odomQueueSize,
+              boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
+                odomTopicName + "_pose"), ros::VoidPtr(),
+                ros::TransportHints().tcpNoDelay(nodelayOdom)));
+          topicSubs_.push_back(
+            nh_.subscribe<std_msgs::Bool>(odomTopic + std::string("/trusted/twist"), odomQueueSize,
+              boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
+                odomTopicName + "_twist"), ros::VoidPtr(),
+                ros::TransportHints().tcpNoDelay(nodelayOdom)));
         }
         else
         {
@@ -1241,9 +1283,15 @@ namespace RobotLocalization
         }
 
         RF_DEBUG("Subscribed to " << odomTopic << " (" << odomTopicName << ")\n\t" <<
+                 "subscribed to trusting source " << odomTopic << "/trusted/pose" << " (" << odomTopicName << ")\n\t" <<
+                 "subscribed to trusting source " << odomTopic << "/trusted/twist" << " (" << odomTopicName << ")\n\t" <<
                  odomTopicName << "_differential is " << (differential ? "true" : "false") << "\n\t" <<
                  odomTopicName << "_pose_rejection_threshold is " << poseMahalanobisThresh << "\n\t" <<
+                 odomTopicName << "_pose_rejection_threshold_init is " << poseMahalanobisThreshInit << "\n\t" <<
+                 odomTopicName << "_pose_rejection_threshold_trusted is " << poseMahalanobisThreshTrusted << "\n\t" <<
                  odomTopicName << "_twist_rejection_threshold is " << twistMahalanobisThresh << "\n\t" <<
+                 odomTopicName << "_twist_rejection_threshold_init is " << twistMahalanobisThreshInit << "\n\t" <<
+                 odomTopicName << "_twist_rejection_threshold_trusted is " << twistMahalanobisThreshTrusted << "\n\t" <<
                  odomTopicName << "_queue_size is " << odomQueueSize << "\n\t" <<
                  odomTopicName << " pose update vector is " << poseUpdateVec << "\t"<<
                  odomTopicName << " twist update vector is " << twistUpdateVec);
@@ -1315,12 +1363,19 @@ namespace RobotLocalization
         if (poseUpdateSum > 0)
         {
           const CallbackData callbackData(poseTopicName, poseUpdateVec, poseUpdateSum, differential, relative,
-            poseMahalanobisThresh, poseMahalanobisThreshInit);
+            poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
 
           topicSubs_.push_back(
             nh_.subscribe<geometry_msgs::PoseWithCovarianceStamped>(poseTopic, poseQueueSize,
               boost::bind(&RosFilter::poseCallback, this, _1, callbackData, worldFrameId_, false),
               ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayPose)));
+          
+          // Subscribe to trusted data as well
+          topicSubs_.push_back(
+            nh_.subscribe<std_msgs::Bool>(poseTopic + std::string("/trusted/pose"), poseQueueSize,
+              boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
+                poseTopic), ros::VoidPtr(),
+                ros::TransportHints().tcpNoDelay(nodelayPose)));
 
           if (differential)
           {
@@ -1348,8 +1403,11 @@ namespace RobotLocalization
         }
 
         RF_DEBUG("Subscribed to " << poseTopic << " (" << poseTopicName << ")\n\t" <<
+                 "subscribed to trusting source " << poseTopic << "/trusted/pose" << " (" << poseTopicName << ")\n\t" <<
                  poseTopicName << "_differential is " << (differential ? "true" : "false") << "\n\t" <<
                  poseTopicName << "_rejection_threshold is " << poseMahalanobisThresh << "\n\t" <<
+                 poseTopicName << "_rejection_threshold_init is " << poseMahalanobisThreshInit << "\n\t" <<
+                 poseTopicName << "_rejection_threshold_trusted is " << poseMahalanobisThreshTrusted << "\n\t" <<
                  poseTopicName << "_queue_size is " << poseQueueSize << "\n\t" <<
                  poseTopicName << " update vector is " << poseUpdateVec);
       }
@@ -1400,12 +1458,19 @@ namespace RobotLocalization
         if (twistUpdateSum > 0)
         {
           const CallbackData callbackData(twistTopicName, twistUpdateVec, twistUpdateSum, false, false,
-            twistMahalanobisThresh, twistMahalanobisThreshInit);
+            twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
 
           topicSubs_.push_back(
             nh_.subscribe<geometry_msgs::TwistWithCovarianceStamped>(twistTopic, twistQueueSize,
               boost::bind(&RosFilter<T>::twistCallback, this, _1, callbackData, baseLinkFrameId_),
               ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayTwist)));
+          
+          // Subscribe to trusted data as well
+          topicSubs_.push_back(
+            nh_.subscribe<std_msgs::Bool>(twistTopic + std::string("/trusted/twist"), twistQueueSize,
+              boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
+                twistTopic), ros::VoidPtr(),
+                ros::TransportHints().tcpNoDelay(nodelayTwist)));
 
           twistVarCounts[StateMemberVx] += twistUpdateVec[StateMemberVx];
           twistVarCounts[StateMemberVy] += twistUpdateVec[StateMemberVy];
@@ -1421,7 +1486,10 @@ namespace RobotLocalization
         }
 
         RF_DEBUG("Subscribed to " << twistTopic << " (" << twistTopicName << ")\n\t" <<
+                 "subscribed to trusting source " << twistTopic << "/trusted/twist" << " (" << twistTopicName << ")\n\t" <<
                  twistTopicName << "_rejection_threshold is " << twistMahalanobisThresh << "\n\t" <<
+                 twistTopicName << "_rejection_threshold_init is " << twistMahalanobisThreshInit << "\n\t" <<
+                 twistTopicName << "_rejection_threshold_trusted is " << twistMahalanobisThreshTrusted << "\n\t" <<
                  twistTopicName << "_queue_size is " << twistQueueSize << "\n\t" <<
                  twistTopicName << " update vector is " << twistUpdateVec);
       }
@@ -1590,16 +1658,33 @@ namespace RobotLocalization
         if (poseUpdateSum + twistUpdateSum + accelUpdateSum > 0)
         {
           const CallbackData poseCallbackData(imuTopicName + "_pose", poseUpdateVec, poseUpdateSum, differential,
-            relative, poseMahalanobisThresh, poseMahalanobisThreshInit);
+            relative, poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
           const CallbackData twistCallbackData(imuTopicName + "_twist", twistUpdateVec, twistUpdateSum, differential,
-            relative, twistMahalanobisThresh, twistMahalanobisThreshInit);
+            relative, twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
           const CallbackData accelCallbackData(imuTopicName + "_acceleration", accelUpdateVec, accelUpdateSum,
-            differential, relative, accelMahalanobisThresh, accelMahalanobisThreshInit);
+            differential, relative, accelMahalanobisThresh, accelMahalanobisThreshInit, accelMahalanobisThreshTrusted);
 
           topicSubs_.push_back(
             nh_.subscribe<sensor_msgs::Imu>(imuTopic, imuQueueSize,
               boost::bind(&RosFilter<T>::imuCallback, this, _1, imuTopicName, poseCallbackData, twistCallbackData,
                 accelCallbackData), ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayImu)));
+          
+          // Subscribe to trusted data as well
+          topicSubs_.push_back(
+            nh_.subscribe<std_msgs::Bool>(imuTopic + std::string("/trusted/pose"), imuQueueSize,
+              boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
+                imuTopic + "_pose"), ros::VoidPtr(),
+                ros::TransportHints().tcpNoDelay(nodelayImu)));
+          topicSubs_.push_back(
+            nh_.subscribe<std_msgs::Bool>(imuTopic + std::string("/trusted/twist"), imuQueueSize,
+              boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
+                imuTopic + "_twist"), ros::VoidPtr(),
+                ros::TransportHints().tcpNoDelay(nodelayImu)));
+          topicSubs_.push_back(
+            nh_.subscribe<std_msgs::Bool>(imuTopic + std::string("/trusted/acceleration"), imuQueueSize,
+              boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
+                imuTopic + "_acceleration"), ros::VoidPtr(),
+                ros::TransportHints().tcpNoDelay(nodelayImu)));
         }
         else
         {
@@ -1697,10 +1782,19 @@ namespace RobotLocalization
         }
 
         RF_DEBUG("Subscribed to " << imuTopic << " (" << imuTopicName << ")\n\t" <<
+                 "subscribed to trusting source " << imuTopic << "/trusted/pose" << " (" << imuTopicName << ")\n\t" <<
+                 "subscribed to trusting source " << imuTopic << "/trusted/twist" << " (" << imuTopicName << ")\n\t" <<
+                 "subscribed to trusting source " << imuTopic << "/trusted/acceleration" << " (" << imuTopicName << ")\n\t" <<
                  imuTopicName << "_differential is " << (differential ? "true" : "false") << "\n\t" <<
                  imuTopicName << "_pose_rejection_threshold is " << poseMahalanobisThresh << "\n\t" <<
+                 imuTopicName << "_pose_rejection_threshold_init is " << poseMahalanobisThreshInit << "\n\t" <<
+                 imuTopicName << "_pose_rejection_threshold_trusted is " << poseMahalanobisThreshTrusted << "\n\t" <<
                  imuTopicName << "_twist_rejection_threshold is " << twistMahalanobisThresh << "\n\t" <<
+                 imuTopicName << "_twist_rejection_thresholdInit is " << twistMahalanobisThreshInit << "\n\t" <<
+                 imuTopicName << "_twist_rejection_thresholdTrusted is " << twistMahalanobisThreshTrusted << "\n\t" <<
                  imuTopicName << "_linear_acceleration_rejection_threshold is " << accelMahalanobisThresh << "\n\t" <<
+                 imuTopicName << "_linear_acceleration_rejection_threshold_init is " << accelMahalanobisThreshInit << "\n\t" <<
+                 imuTopicName << "_linear_acceleration_rejection_threshold_trusted is " << accelMahalanobisThreshTrusted << "\n\t" <<
                  imuTopicName << "_remove_gravitational_acceleration is " <<
                                  (removeGravAcc ? "true" : "false") << "\n\t" <<
                  imuTopicName << "_queue_size is " << imuQueueSize << "\n\t" <<
@@ -2009,13 +2103,21 @@ namespace RobotLocalization
                       measurement,
                       measurementCovariance))
       {
+        // Check which rejection threshold to use
+        double rejectionThreshold = callbackData.rejectionThreshold_;
+        if((sourceData_.find(topicName) != sourceData_.end() &&
+          (sourceData_[topicName].trusted_)))
+        {
+          rejectionThreshold = callbackData.rejectionThresholdTrusted_;
+        }
         // Store the measurement. Add a "pose" suffix so we know what kind of measurement
         // we're dealing with when we debug the core filter logic.
+        // TODO: Determine if measurement is trusted and set mahalanobis distance accordingly
         enqueueMeasurement(topicName,
                            measurement,
                            measurementCovariance,
                            updateVectorCorrected,
-                           callbackData.rejectionThreshold_,
+                           rejectionThreshold,
                            callbackData.rejectionThresholdInit_,
                            msg->header.stamp);
 
@@ -2073,6 +2175,20 @@ namespace RobotLocalization
     }
 
     ros::Time curTime = ros::Time::now();
+    double secCurTime = curTime.toSec();
+
+    // Handle any timeouts of trusted data
+    if(trusted_timeout_ > 0.0)
+    {
+      for(auto &item : sourceData_)
+      {
+        if((item.second.trusted_ == true) && (secCurTime > (item.second.last_trusted_s_ + trusted_timeout_)))
+        {
+          // Trusted status timed out
+          item.second.trusted_ = false;
+        }
+      }
+    }
 
     if (toggledOn_)
     {
@@ -2364,13 +2480,20 @@ namespace RobotLocalization
       // Prepare the twist data for inclusion in the filter
       if (prepareTwist(msg, topicName, targetFrame, updateVectorCorrected, measurement, measurementCovariance))
       {
+        // Check which rejection threshold to use
+        double rejectionThreshold = callbackData.rejectionThreshold_;
+        if((sourceData_.find(topicName) != sourceData_.end() &&
+          (sourceData_[topicName].trusted_)))
+        {
+          rejectionThreshold = callbackData.rejectionThresholdTrusted_;
+        }
         // Store the measurement. Add a "twist" suffix so we know what kind of measurement
         // we're dealing with when we debug the core filter logic.
         enqueueMeasurement(topicName,
                            measurement,
                            measurementCovariance,
                            updateVectorCorrected,
-                           callbackData.rejectionThreshold_,
+                           rejectionThreshold,
                            callbackData.rejectionThresholdInit_,
                            msg->header.stamp);
 

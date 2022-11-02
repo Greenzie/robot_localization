@@ -85,14 +85,16 @@ struct CallbackData
                const bool differential,
                const bool relative,
                const double rejectionThreshold,
-               const double rejectionThresholdInit) :
+               const double rejectionThresholdInit,
+               const double rejectionThresholdTrusted) :
     topicName_(topicName),
     updateVector_(updateVector),
     updateSum_(updateSum),
     differential_(differential),
     relative_(relative),
     rejectionThreshold_(rejectionThreshold),
-    rejectionThresholdInit_(rejectionThresholdInit)
+    rejectionThresholdInit_(rejectionThresholdInit),
+    rejectionThresholdTrusted_(rejectionThresholdTrusted)
   {
   }
 
@@ -103,6 +105,15 @@ struct CallbackData
   bool relative_;
   double rejectionThreshold_;
   double rejectionThresholdInit_;
+  double rejectionThresholdTrusted_;
+};
+
+struct SourceData
+{
+  SourceData() {}
+
+  bool trusted_{false};
+  double last_trusted_s_{-99999.0};  // Never trusted
 };
 
 typedef std::priority_queue<MeasurementPtr, std::vector<MeasurementPtr>, Measurement> MeasurementQueue;
@@ -241,6 +252,14 @@ template<class T> class RosFilter
     //! This method receives magnetometer validity information to associate with the dynamic correction data
     //!
     void imuMagnetometerValidityCallback(const std_msgs::Bool::ConstPtr &msg, const std::string &topicName);
+
+    //! @brief Callback method for receiving all trusted sensor data
+    //! @param[in] msg - The ROS Bool message to take in.
+    //! @param[in] topicName - The topic name for the sensor data that is trusted/untrusted
+    //!
+    //! This method receives trusted sensor information for handling rejection thresholds
+    //!
+    void trustedSensorCallback(const std_msgs::Bool::ConstPtr &msg, const std::string &topicName);
 
     //! @brief Processes all measurements in the measurement queue, in temporal order
     //!
@@ -522,6 +541,10 @@ template<class T> class RosFilter
     //!
     double frequency_;
 
+    //! @brief Timeout for trusted rejection threshold (< 0 for infinite)
+    //!
+    double trusted_timeout_;
+
     //! @brief What is the acceleration in Z due to gravity (m/s^2)? Default is +9.80665.
     //!
     double gravitationalAcc_;
@@ -628,9 +651,13 @@ template<class T> class RosFilter
     //!
     std::map<std::string, std::string> staticDiagnostics_;
 
-    //! @brief Thisobject holds dynamic correction information, if enabled, per IMU input
+    //! @brief This object holds dynamic correction information, if enabled, per IMU input
     //!
     std::map<std::string, RosFilterBiasEstimator> imuDynamicCorrectionData_;
+
+    //! @brief Holds information about data sources
+    //!
+    std::map<std::string, SourceData> sourceData_;
 
     //! @brief The most recent control input
     //!
