@@ -110,7 +110,15 @@ struct CallbackData
 
 struct SourceData
 {
-  SourceData() {}
+  SourceData()
+  {
+    bias_pose_.resize(STATE_SIZE);
+    bias_pose_.setZero();
+    bias_twist_.resize(STATE_SIZE);
+    bias_twist_.setZero();
+    bias_acceleration_.resize(STATE_SIZE);
+    bias_acceleration_.setZero();
+  }
 
   bool trusted_{false};
   double last_trusted_s_{-99999.0};  // Never trusted initially
