@@ -1296,8 +1296,8 @@ namespace RobotLocalization
         }
 
         RF_DEBUG("Subscribed to " << odomTopic << " (" << odomTopicName << ")\n\t" <<
-                 "subscribed to trusting source " << odomTopic << "/trusted" << " (" << odomTopicName << ")\n\t" <<
-                 "subscribed to bias source " << odomTopic << "/bias" << " (" << odomTopicName << ")\n\t" <<
+                 "Subscribed to trusting source " << odomTopic << "/trusted" << " (" << odomTopicName << ")\n\t" <<
+                 "Subscribed to bias source " << odomTopic << "/bias" << " (" << odomTopicName << ")\n\t" <<
                  odomTopicName << "_differential is " << (differential ? "true" : "false") << "\n\t" <<
                  odomTopicName << "_pose_rejection_threshold is " << poseMahalanobisThresh << "\n\t" <<
                  odomTopicName << "_pose_rejection_threshold_init is " << poseMahalanobisThreshInit << "\n\t" <<
