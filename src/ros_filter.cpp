@@ -72,6 +72,8 @@ namespace RobotLocalization
       dynamicDiagErrorLevel_(diagnostic_msgs::DiagnosticStatus::OK),
       staticDiagErrorLevel_(diagnostic_msgs::DiagnosticStatus::OK),
       frequency_(30.0),
+      trusted_timeout_{-1.0},
+      bias_timeout_{-1.0},
       gravitationalAcc_(9.80665),
       historyLength_(0),
       minFrequency_(frequency_ - 2.0),
@@ -248,16 +250,32 @@ namespace RobotLocalization
       std::vector<int> updateVectorCorrected = callbackData.updateVector_;
 
       // Prepare the twist data for inclusion in the filter
-      if (prepareAcceleration(msg, topicName, targetFrame, updateVectorCorrected, measurement,
+      if (prepareAcceleration(msg, topicName, targetFrame, removeGravitationalAcc_[topicName], updateVectorCorrected, measurement,
             measurementCovariance))
       {
+        // Check which rejection threshold to use and whether to use bias information
+        double rejectionThreshold = callbackData.rejectionThreshold_;
+        if(sourceData_.find(topicName) != sourceData_.end())
+        {
+          RF_VERBOSE("Has source data for topic " << topicName << " acceleration\n");
+          if(sourceData_[topicName].trusted_)
+          {
+            // Trusted source
+            rejectionThreshold = callbackData.rejectionThresholdTrusted_;
+          }
+          if(sourceData_[topicName].bias_valid_)
+          {
+            // Use bias information
+            measurement += sourceData_[topicName].bias_acceleration_;
+          }
+        }
         // Store the measurement. Add an "acceleration" suffix so we know what kind of measurement
         // we're dealing with when we debug the core filter logic.
         enqueueMeasurement(topicName,
                            measurement,
                            measurementCovariance,
                            updateVectorCorrected,
-                           callbackData.rejectionThreshold_,
+                           rejectionThreshold,
                            callbackData.rejectionThresholdInit_,
                            msg->header.stamp);
 
@@ -638,6 +656,27 @@ namespace RobotLocalization
   }
 
   template<typename T>
+  void RosFilter<T>::trustedSensorCallback(const std_msgs::Bool::ConstPtr &msg,
+                                           const std::string &topicName)
+  {
+    // RF_VERBOSE provides this info in the debug file inline with the received and
+    //  and processed data, so is highly useful
+    RF_VERBOSE("Received trusted sensor data for topic " << topicName <<
+      " with trusted " << ((msg->data) ? "true\n" : "false\n"));
+    // If this information is to be provided via a ROS stream, do so from the provider
+    // Pass it in/save it all
+    if(sourceData_.find(topicName) == sourceData_.end())
+    {
+      RF_VERBOSE("Adding trusted sensor source data for topic " << topicName << "\n");
+      // Create it
+      sourceData_.emplace(topicName, SourceData());
+    }
+    // Save the data
+    sourceData_[topicName].trusted_ = msg->data;
+    sourceData_[topicName].last_trusted_s_ = ros::Time::now().toSec();
+  }
+
+  template<typename T>
   void RosFilter<T>::integrateMeasurements(const ros::Time &currentTime)
   {
     const double currentTimeSec = currentTime.toSec();
@@ -914,6 +953,9 @@ namespace RobotLocalization
     nhLocal_.param("sensor_timeout", sensorTimeout, 1.0 / frequency_);
     filter_.setSensorTimeout(sensorTimeout);
 
+    nhLocal_.param("trusted_timeout", trusted_timeout_, -1.0);
+    nhLocal_.param("bias_timeout", bias_timeout_, -1.0);
+
     // Determine if we're in 2D mode
     nhLocal_.param("two_d_mode", twoDMode_, false);
 
@@ -1148,6 +1190,10 @@ namespace RobotLocalization
         nhLocal_.param(odomTopicName + std::string("_pose_rejection_threshold_initialize"),
                        poseMahalanobisThreshInit,
                        std::numeric_limits<double>::max());
+        double poseMahalanobisThreshTrusted;
+        nhLocal_.param(odomTopicName + std::string("_pose_rejection_threshold_trusted"),
+                       poseMahalanobisThreshTrusted,
+                       std::numeric_limits<double>::max());
 
         // Check for twist rejection threshold
         double twistMahalanobisThresh;
@@ -1157,6 +1203,10 @@ namespace RobotLocalization
         double twistMahalanobisThreshInit;
         nhLocal_.param(odomTopicName + std::string("_twist_rejection_threshold_initialize"),
                        twistMahalanobisThreshInit,
+                       std::numeric_limits<double>::max());
+        double twistMahalanobisThreshTrusted;
+        nhLocal_.param(odomTopicName + std::string("_twist_rejection_threshold_trusted"),
+                       twistMahalanobisThreshTrusted,
                        std::numeric_limits<double>::max());
 
         // Now pull in its boolean update vector configuration. Create separate vectors for pose
@@ -1174,9 +1224,9 @@ namespace RobotLocalization
         nhLocal_.param(odomTopicName + "_queue_size", odomQueueSize, 1);
 
         const CallbackData poseCallbackData(odomTopicName + "_pose", poseUpdateVec, poseUpdateSum, differential,
-          relative, poseMahalanobisThresh, poseMahalanobisThreshInit);
+          relative, poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
         const CallbackData twistCallbackData(odomTopicName + "_twist", twistUpdateVec, twistUpdateSum, false, false,
-          twistMahalanobisThresh, twistMahalanobisThresh);
+          twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
 
         bool nodelayOdom = false;
         nhLocal_.param(odomTopicName + "_nodelay", nodelayOdom, false);
@@ -1188,6 +1238,19 @@ namespace RobotLocalization
             nh_.subscribe<nav_msgs::Odometry>(odomTopic, odomQueueSize,
               boost::bind(&RosFilter::odometryCallback, this, _1, odomTopicName, poseCallbackData, twistCallbackData),
               ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayOdom)));
+
+          // Subscribe to bias data
+          topicSubs_.push_back(
+            nh_.subscribe<nav_msgs::Odometry>(odomTopic + std::string("/bias"), odomQueueSize,
+              boost::bind(&RosFilter::biasOdometryCallback, this, _1, odomTopicName, poseCallbackData, twistCallbackData),
+              ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayOdom)));
+          
+          // Subscribe to trusted data
+          topicSubs_.push_back(
+            nh_.subscribe<std_msgs::Bool>(odomTopic + std::string("/trusted"), odomQueueSize,
+              boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
+                odomTopicName), ros::VoidPtr(),
+                ros::TransportHints().tcpNoDelay(nodelayOdom)));
         }
         else
         {
@@ -1233,9 +1296,15 @@ namespace RobotLocalization
         }
 
         RF_DEBUG("Subscribed to " << odomTopic << " (" << odomTopicName << ")\n\t" <<
+                 "Subscribed to trusting source " << odomTopic << "/trusted" << " (" << odomTopicName << ")\n\t" <<
+                 "Subscribed to bias source " << odomTopic << "/bias" << " (" << odomTopicName << ")\n\t" <<
                  odomTopicName << "_differential is " << (differential ? "true" : "false") << "\n\t" <<
                  odomTopicName << "_pose_rejection_threshold is " << poseMahalanobisThresh << "\n\t" <<
+                 odomTopicName << "_pose_rejection_threshold_init is " << poseMahalanobisThreshInit << "\n\t" <<
+                 odomTopicName << "_pose_rejection_threshold_trusted is " << poseMahalanobisThreshTrusted << "\n\t" <<
                  odomTopicName << "_twist_rejection_threshold is " << twistMahalanobisThresh << "\n\t" <<
+                 odomTopicName << "_twist_rejection_threshold_init is " << twistMahalanobisThreshInit << "\n\t" <<
+                 odomTopicName << "_twist_rejection_threshold_trusted is " << twistMahalanobisThreshTrusted << "\n\t" <<
                  odomTopicName << "_queue_size is " << odomQueueSize << "\n\t" <<
                  odomTopicName << " pose update vector is " << poseUpdateVec << "\t"<<
                  odomTopicName << " twist update vector is " << twistUpdateVec);
@@ -1282,6 +1351,10 @@ namespace RobotLocalization
         nhLocal_.param(poseTopicName + std::string("_rejection_threshold_initialize"),
                        poseMahalanobisThreshInit,
                        std::numeric_limits<double>::max());
+        double poseMahalanobisThreshTrusted;
+        nhLocal_.param(poseTopicName + std::string("_rejection_threshold_trusted"),
+                       poseMahalanobisThreshTrusted,
+                       std::numeric_limits<double>::max());
 
         int poseQueueSize = 1;
         nhLocal_.param(poseTopicName + "_queue_size", poseQueueSize, 1);
@@ -1303,12 +1376,25 @@ namespace RobotLocalization
         if (poseUpdateSum > 0)
         {
           const CallbackData callbackData(poseTopicName, poseUpdateVec, poseUpdateSum, differential, relative,
-            poseMahalanobisThresh, poseMahalanobisThreshInit);
+            poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
 
           topicSubs_.push_back(
             nh_.subscribe<geometry_msgs::PoseWithCovarianceStamped>(poseTopic, poseQueueSize,
               boost::bind(&RosFilter::poseCallback, this, _1, callbackData, worldFrameId_, false),
               ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayPose)));
+          
+          // Subscribe to bias data
+          topicSubs_.push_back(
+            nh_.subscribe<geometry_msgs::PoseWithCovarianceStamped>(poseTopic + std::string("/bias"), poseQueueSize,
+              boost::bind(&RosFilter::biasPoseCallback, this, _1, callbackData, worldFrameId_, false),
+              ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayPose)));
+          
+          // Subscribe to trusted data
+          topicSubs_.push_back(
+            nh_.subscribe<std_msgs::Bool>(poseTopic + std::string("/trusted"), poseQueueSize,
+              boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
+                poseTopic), ros::VoidPtr(),
+                ros::TransportHints().tcpNoDelay(nodelayPose)));
 
           if (differential)
           {
@@ -1336,8 +1422,12 @@ namespace RobotLocalization
         }
 
         RF_DEBUG("Subscribed to " << poseTopic << " (" << poseTopicName << ")\n\t" <<
+                 "Subscribed to trusting source " << poseTopic << "/trusted" << " (" << poseTopicName << ")\n\t" <<
+                 "Subscribed to bias source " << poseTopic << "/bias" << " (" << poseTopicName << ")\n\t" <<
                  poseTopicName << "_differential is " << (differential ? "true" : "false") << "\n\t" <<
                  poseTopicName << "_rejection_threshold is " << poseMahalanobisThresh << "\n\t" <<
+                 poseTopicName << "_rejection_threshold_init is " << poseMahalanobisThreshInit << "\n\t" <<
+                 poseTopicName << "_rejection_threshold_trusted is " << poseMahalanobisThreshTrusted << "\n\t" <<
                  poseTopicName << "_queue_size is " << poseQueueSize << "\n\t" <<
                  poseTopicName << " update vector is " << poseUpdateVec);
       }
@@ -1368,6 +1458,10 @@ namespace RobotLocalization
         nhLocal_.param(twistTopicName + std::string("_rejection_threshold_initialize"),
                        twistMahalanobisThreshInit,
                        std::numeric_limits<double>::max());
+        double twistMahalanobisThreshTrusted;
+        nhLocal_.param(twistTopicName + std::string("_rejection_threshold_trusted"),
+                       twistMahalanobisThreshTrusted,
+                       std::numeric_limits<double>::max());
 
         int twistQueueSize = 1;
         nhLocal_.param(twistTopicName + "_queue_size", twistQueueSize, 1);
@@ -1384,12 +1478,25 @@ namespace RobotLocalization
         if (twistUpdateSum > 0)
         {
           const CallbackData callbackData(twistTopicName, twistUpdateVec, twistUpdateSum, false, false,
-            twistMahalanobisThresh, twistMahalanobisThreshInit);
+            twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
 
           topicSubs_.push_back(
             nh_.subscribe<geometry_msgs::TwistWithCovarianceStamped>(twistTopic, twistQueueSize,
               boost::bind(&RosFilter<T>::twistCallback, this, _1, callbackData, baseLinkFrameId_),
               ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayTwist)));
+          
+          // Subscribe to bias data
+          topicSubs_.push_back(
+            nh_.subscribe<geometry_msgs::TwistWithCovarianceStamped>(twistTopic + std::string("/bias"), twistQueueSize,
+              boost::bind(&RosFilter<T>::biasTwistCallback, this, _1, callbackData, baseLinkFrameId_),
+              ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayTwist)));
+
+          // Subscribe to trusted data
+          topicSubs_.push_back(
+            nh_.subscribe<std_msgs::Bool>(twistTopic + std::string("/trusted"), twistQueueSize,
+              boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
+                twistTopic), ros::VoidPtr(),
+                ros::TransportHints().tcpNoDelay(nodelayTwist)));
 
           twistVarCounts[StateMemberVx] += twistUpdateVec[StateMemberVx];
           twistVarCounts[StateMemberVy] += twistUpdateVec[StateMemberVy];
@@ -1405,7 +1512,11 @@ namespace RobotLocalization
         }
 
         RF_DEBUG("Subscribed to " << twistTopic << " (" << twistTopicName << ")\n\t" <<
+                 "Subscribed to trusting source " << twistTopic << "/trusted" << " (" << twistTopicName << ")\n\t" <<
+                 "Subscribed to bias source " << twistTopic << "/bias" << " (" << twistTopicName << ")\n\t" <<
                  twistTopicName << "_rejection_threshold is " << twistMahalanobisThresh << "\n\t" <<
+                 twistTopicName << "_rejection_threshold_init is " << twistMahalanobisThreshInit << "\n\t" <<
+                 twistTopicName << "_rejection_threshold_trusted is " << twistMahalanobisThreshTrusted << "\n\t" <<
                  twistTopicName << "_queue_size is " << twistQueueSize << "\n\t" <<
                  twistTopicName << " update vector is " << twistUpdateVec);
       }
@@ -1451,6 +1562,10 @@ namespace RobotLocalization
         nhLocal_.param(imuTopicName + std::string("_pose_rejection_threshold_initialize"),
                        poseMahalanobisThreshInit,
                        std::numeric_limits<double>::max());
+        double poseMahalanobisThreshTrusted;
+        nhLocal_.param(imuTopicName + std::string("_pose_rejection_threshold_trusted"),
+                       poseMahalanobisThreshTrusted,
+                       std::numeric_limits<double>::max());
 
         // Check for angular velocity rejection threshold
         double twistMahalanobisThresh;
@@ -1461,6 +1576,10 @@ namespace RobotLocalization
         imuTwistRejectionName =
           imuTopicName + std::string("_twist_rejection_threshold_initialize");
         nhLocal_.param(imuTwistRejectionName, twistMahalanobisThreshInit, std::numeric_limits<double>::max());
+        double twistMahalanobisThreshTrusted;
+        imuTwistRejectionName =
+          imuTopicName + std::string("_twist_rejection_threshold_trusted");
+        nhLocal_.param(imuTwistRejectionName, twistMahalanobisThreshTrusted, std::numeric_limits<double>::max());
 
         // Check for acceleration rejection threshold
         double accelMahalanobisThresh;
@@ -1470,6 +1589,10 @@ namespace RobotLocalization
         double accelMahalanobisThreshInit;
         nhLocal_.param(imuTopicName + std::string("_linear_acceleration_rejection_threshold_initialize"),
                        accelMahalanobisThreshInit,
+                       std::numeric_limits<double>::max());
+        double accelMahalanobisThreshTrusted;
+        nhLocal_.param(imuTopicName + std::string("_linear_acceleration_rejection_threshold_trusted"),
+                       accelMahalanobisThreshTrusted,
                        std::numeric_limits<double>::max());
 
         bool removeGravAcc = false;
@@ -1562,16 +1685,29 @@ namespace RobotLocalization
         if (poseUpdateSum + twistUpdateSum + accelUpdateSum > 0)
         {
           const CallbackData poseCallbackData(imuTopicName + "_pose", poseUpdateVec, poseUpdateSum, differential,
-            relative, poseMahalanobisThresh, poseMahalanobisThreshInit);
+            relative, poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
           const CallbackData twistCallbackData(imuTopicName + "_twist", twistUpdateVec, twistUpdateSum, differential,
-            relative, twistMahalanobisThresh, twistMahalanobisThreshInit);
+            relative, twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
           const CallbackData accelCallbackData(imuTopicName + "_acceleration", accelUpdateVec, accelUpdateSum,
-            differential, relative, accelMahalanobisThresh, accelMahalanobisThreshInit);
+            differential, relative, accelMahalanobisThresh, accelMahalanobisThreshInit, accelMahalanobisThreshTrusted);
 
           topicSubs_.push_back(
             nh_.subscribe<sensor_msgs::Imu>(imuTopic, imuQueueSize,
               boost::bind(&RosFilter<T>::imuCallback, this, _1, imuTopicName, poseCallbackData, twistCallbackData,
                 accelCallbackData), ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayImu)));
+          
+          // Subscribe to bias data
+          topicSubs_.push_back(
+            nh_.subscribe<sensor_msgs::Imu>(imuTopic + std::string("/bias"), imuQueueSize,
+              boost::bind(&RosFilter<T>::biasImuCallback, this, _1, imuTopicName, poseCallbackData, twistCallbackData,
+                accelCallbackData), ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayImu)));
+
+          // Subscribe to trusted data
+          topicSubs_.push_back(
+            nh_.subscribe<std_msgs::Bool>(imuTopic + std::string("/trusted"), imuQueueSize,
+              boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
+                imuTopic), ros::VoidPtr(),
+                ros::TransportHints().tcpNoDelay(nodelayImu)));
         }
         else
         {
@@ -1669,10 +1805,18 @@ namespace RobotLocalization
         }
 
         RF_DEBUG("Subscribed to " << imuTopic << " (" << imuTopicName << ")\n\t" <<
+                 "Subscribed to trusting source " << imuTopic << "/trusted" << " (" << imuTopicName << ")\n\t" <<
+                 "Subscribed to bias source " << imuTopic << "/bias" << " (" << imuTopicName << ")\n\t" <<
                  imuTopicName << "_differential is " << (differential ? "true" : "false") << "\n\t" <<
                  imuTopicName << "_pose_rejection_threshold is " << poseMahalanobisThresh << "\n\t" <<
+                 imuTopicName << "_pose_rejection_threshold_init is " << poseMahalanobisThreshInit << "\n\t" <<
+                 imuTopicName << "_pose_rejection_threshold_trusted is " << poseMahalanobisThreshTrusted << "\n\t" <<
                  imuTopicName << "_twist_rejection_threshold is " << twistMahalanobisThresh << "\n\t" <<
+                 imuTopicName << "_twist_rejection_thresholdInit is " << twistMahalanobisThreshInit << "\n\t" <<
+                 imuTopicName << "_twist_rejection_thresholdTrusted is " << twistMahalanobisThreshTrusted << "\n\t" <<
                  imuTopicName << "_linear_acceleration_rejection_threshold is " << accelMahalanobisThresh << "\n\t" <<
+                 imuTopicName << "_linear_acceleration_rejection_threshold_init is " << accelMahalanobisThreshInit << "\n\t" <<
+                 imuTopicName << "_linear_acceleration_rejection_threshold_trusted is " << accelMahalanobisThreshTrusted << "\n\t" <<
                  imuTopicName << "_remove_gravitational_acceleration is " <<
                                  (removeGravAcc ? "true" : "false") << "\n\t" <<
                  imuTopicName << "_queue_size is " << imuQueueSize << "\n\t" <<
@@ -1981,13 +2125,29 @@ namespace RobotLocalization
                       measurement,
                       measurementCovariance))
       {
+        // Check which rejection threshold to use and whether to use bias information
+        double rejectionThreshold = callbackData.rejectionThreshold_;
+        if(sourceData_.find(topicName) != sourceData_.end())
+        {
+          RF_VERBOSE("Has source data for topic " << topicName << " pose\n");
+          if(sourceData_[topicName].trusted_)
+          {
+            // Trusted source
+            rejectionThreshold = callbackData.rejectionThresholdTrusted_;
+          }
+          if(sourceData_[topicName].bias_valid_)
+          {
+            // Use bias information
+            measurement += sourceData_[topicName].bias_pose_;
+          }
+        }
         // Store the measurement. Add a "pose" suffix so we know what kind of measurement
         // we're dealing with when we debug the core filter logic.
         enqueueMeasurement(topicName,
                            measurement,
                            measurementCovariance,
                            updateVectorCorrected,
-                           callbackData.rejectionThreshold_,
+                           rejectionThreshold,
                            callbackData.rejectionThresholdInit_,
                            msg->header.stamp);
 
@@ -2045,6 +2205,29 @@ namespace RobotLocalization
     }
 
     ros::Time curTime = ros::Time::now();
+    double secCurTime = curTime.toSec();
+
+    // Handle any timeouts of trusted data
+    if((trusted_timeout_ > 0.0) || (bias_timeout_ > 0.0))
+    {
+      for(auto &item : sourceData_)
+      {
+        if((trusted_timeout_ > 0.0) && 
+          (item.second.trusted_) &&
+          (secCurTime > (item.second.last_trusted_s_ + trusted_timeout_)))
+        {
+          // Trusted status timed out
+          item.second.trusted_ = false;
+        }
+        if((bias_timeout_ > 0.0) && 
+          (item.second.bias_valid_) &&
+          (secCurTime > (item.second.last_bias_s_ + bias_timeout_)))
+        {
+          // Trusted status timed out
+          item.second.bias_valid_ = false;
+        }
+      }
+    }
 
     if (toggledOn_)
     {
@@ -2336,13 +2519,29 @@ namespace RobotLocalization
       // Prepare the twist data for inclusion in the filter
       if (prepareTwist(msg, topicName, targetFrame, updateVectorCorrected, measurement, measurementCovariance))
       {
+        // Check which rejection threshold to use and whether to use bias information
+        RF_VERBOSE("Has source data for topic " << topicName << " twist\n");
+        double rejectionThreshold = callbackData.rejectionThreshold_;
+        if(sourceData_.find(topicName) != sourceData_.end())
+        {
+          if(sourceData_[topicName].trusted_)
+          {
+            // Trusted source
+            rejectionThreshold = callbackData.rejectionThresholdTrusted_;
+          }
+          if(sourceData_[topicName].bias_valid_)
+          {
+            // Use bias information
+            measurement += sourceData_[topicName].bias_twist_;
+          }
+        }
         // Store the measurement. Add a "twist" suffix so we know what kind of measurement
         // we're dealing with when we debug the core filter logic.
         enqueueMeasurement(topicName,
                            measurement,
                            measurementCovariance,
                            updateVectorCorrected,
-                           callbackData.rejectionThreshold_,
+                           rejectionThreshold,
                            callbackData.rejectionThresholdInit_,
                            msg->header.stamp);
 
@@ -2568,6 +2767,7 @@ namespace RobotLocalization
   bool RosFilter<T>::prepareAcceleration(const sensor_msgs::Imu::ConstPtr &msg,
                            const std::string &topicName,
                            const std::string &targetFrame,
+                           const bool &removeGravitationalAccel,
                            std::vector<int> &updateVector,
                            Eigen::VectorXd &measurement,
                            Eigen::MatrixXd &measurementCovariance)
@@ -2625,7 +2825,7 @@ namespace RobotLocalization
     {
       // We don't know if the user has already handled the removal
       // of normal forces, so we use a parameter
-      if (removeGravitationalAcc_[topicName])
+      if (removeGravitationalAccel)
       {
         tf2::Vector3 normAcc(0, 0, gravitationalAcc_);
         tf2::Transform trans;
@@ -3527,6 +3727,207 @@ namespace RobotLocalization
       measurementQueue_.pop();
     }
     return;
+  }
+
+  template<typename T>
+  void RosFilter<T>::biasOdometryCallback(const nav_msgs::Odometry::ConstPtr &msg, const std::string &topicName,
+    const CallbackData &poseCallbackData, const CallbackData &twistCallbackData)
+  {
+    RF_VERBOSE("------ RosFilter::biasOdometryCallback (" << topicName << ") ------\n" << "Odometry message:\n" << *msg);
+
+    if (poseCallbackData.updateSum_ > 0)
+    {
+      // Grab the pose portion of the message and pass it to the poseCallback
+      geometry_msgs::PoseWithCovarianceStamped *posPtr = new geometry_msgs::PoseWithCovarianceStamped();
+      posPtr->header = msg->header;
+      posPtr->pose = msg->pose;  // Entire pose object, also copies covariance
+
+      geometry_msgs::PoseWithCovarianceStampedConstPtr pptr(posPtr);
+      biasPoseCallback(pptr, poseCallbackData, worldFrameId_, false);
+    }
+
+    if (twistCallbackData.updateSum_ > 0)
+    {
+      // Grab the twist portion of the message and pass it to the twistCallback
+      geometry_msgs::TwistWithCovarianceStamped *twistPtr = new geometry_msgs::TwistWithCovarianceStamped();
+      twistPtr->header = msg->header;
+      twistPtr->header.frame_id = msg->child_frame_id;
+      twistPtr->twist = msg->twist;  // Entire twist object, also copies covariance
+
+      geometry_msgs::TwistWithCovarianceStampedConstPtr tptr(twistPtr);
+      biasTwistCallback(tptr, twistCallbackData, baseLinkFrameId_);
+    }
+
+    RF_VERBOSE("\n----- /RosFilter::biasOdometryCallback (" << topicName << ") ------\n");
+  }
+
+  template<typename T>
+  void RosFilter<T>::biasImuCallback(const sensor_msgs::Imu::ConstPtr &msg,
+                                 const std::string &topicName,
+                                 const CallbackData &poseCallbackData,
+                                 const CallbackData &twistCallbackData,
+                                 const CallbackData &accelCallbackData)
+  {
+    RF_VERBOSE("------ RosFilter::biasImuCallback (" << topicName << ") ------\n" << "IMU message:\n" << *msg);
+
+    // As with the odometry message, we can separate out the pose- and twist-related variables
+    // in the IMU message and pass them to the pose and twist callbacks (filters)
+    if (poseCallbackData.updateSum_ > 0)
+    {
+      // Extract the pose (orientation) data, pass it to its filter
+      geometry_msgs::PoseWithCovarianceStamped *posPtr = new geometry_msgs::PoseWithCovarianceStamped();
+      posPtr->header = msg->header;
+      posPtr->pose.pose.orientation = msg->orientation;
+
+      // IMU data gets handled a bit differently, since the message is ambiguous and has only a single frame_id,
+      // even though the data in it is reported in two different frames. As we assume users will specify a base_link
+      // to imu transform, we make the target frame baseLinkFrameId_ and tell the poseCallback that it is working
+      // with IMU data. This will cause it to apply different logic to the data.
+      geometry_msgs::PoseWithCovarianceStampedConstPtr pptr(posPtr);
+      biasPoseCallback(pptr, poseCallbackData, baseLinkFrameId_, true);
+    }
+
+    if (twistCallbackData.updateSum_ > 0)
+    {
+      // Repeat for velocity
+      geometry_msgs::TwistWithCovarianceStamped *twistPtr = new geometry_msgs::TwistWithCovarianceStamped();
+      twistPtr->header = msg->header;
+      twistPtr->twist.twist.angular = msg->angular_velocity;
+
+      geometry_msgs::TwistWithCovarianceStampedConstPtr tptr(twistPtr);
+      biasTwistCallback(tptr, twistCallbackData, baseLinkFrameId_);
+    }
+
+    if (accelCallbackData.updateSum_ > 0)
+    {
+      // Pass the message on
+      biasAccelerationCallback(msg, accelCallbackData, baseLinkFrameId_);
+    }
+
+    RF_VERBOSE("\n----- /RosFilter::biasImuCallback (" << topicName << ") ------\n");
+  }
+
+  template<typename T>
+  void RosFilter<T>::biasPoseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr &msg,
+                                      const CallbackData &callbackData,
+                                      const std::string &targetFrame,
+                                      const bool imuData)
+  {
+    const std::string &topicName = callbackData.topicName_;
+
+    RF_VERBOSE("------ RosFilter::biasPoseCallback (" << topicName << ") ------\n" <<
+             "Pose message:\n" << *msg);
+
+    Eigen::VectorXd measurement(STATE_SIZE);
+    Eigen::MatrixXd measurementCovariance(STATE_SIZE, STATE_SIZE);
+
+    measurement.setZero();
+    measurementCovariance.setZero();
+
+    // Make sure we're actually updating at least one of these variables
+    std::vector<int> updateVectorCorrected = callbackData.updateVector_;
+
+    // Prepare the pose data for inclusion in the filter
+    if (preparePose(msg,
+                    topicName,
+                    targetFrame,
+                    callbackData.differential_,
+                    callbackData.relative_,
+                    imuData,
+                    updateVectorCorrected,
+                    measurement,
+                    measurementCovariance))
+    {
+      // Save the bias data
+      if(sourceData_.find(topicName) == sourceData_.end())
+      {
+        RF_VERBOSE("Adding pose source data for topic " << topicName << "\n");
+        // Create the new data storage for this source
+        sourceData_.emplace(topicName, SourceData());
+      }
+      sourceData_[topicName].bias_pose_ = measurement;
+      sourceData_[topicName].bias_valid_ = true;
+      sourceData_[topicName].last_bias_s_ = msg->header.stamp.toSec();
+      RF_VERBOSE("Bias data for topic " << topicName << " updated to " << measurement);
+    }
+
+    RF_VERBOSE("\n----- /RosFilter::biasPoseCallback (" << topicName << ") ------\n");
+  }
+
+  template<typename T>
+  void RosFilter<T>::biasTwistCallback(const geometry_msgs::TwistWithCovarianceStamped::ConstPtr &msg,
+                                   const CallbackData &callbackData,
+                                   const std::string &targetFrame)
+  {
+    const std::string &topicName = callbackData.topicName_;
+
+    RF_VERBOSE("------ RosFilter::biasTwistCallback (" << topicName << ") ------\n"
+             "Twist message:\n" << *msg);
+
+    Eigen::VectorXd measurement(STATE_SIZE);
+    Eigen::MatrixXd measurementCovariance(STATE_SIZE, STATE_SIZE);
+
+    measurement.setZero();
+    measurementCovariance.setZero();
+
+    // Make sure we're actually updating at least one of these variables
+    std::vector<int> updateVectorCorrected = callbackData.updateVector_;
+
+    // Prepare the twist data for inclusion in the filter
+    if (prepareTwist(msg, topicName, targetFrame, updateVectorCorrected, measurement, measurementCovariance))
+    {
+      // Save the bias data
+      if(sourceData_.find(topicName) == sourceData_.end())
+      {
+        RF_VERBOSE("Adding twist source data for topic " << topicName << "\n");
+        // Create the new data storage for this source
+        sourceData_.emplace(topicName, SourceData());
+      }
+      sourceData_[topicName].bias_twist_ = measurement;
+      sourceData_[topicName].bias_valid_ = true;
+      sourceData_[topicName].last_bias_s_ = msg->header.stamp.toSec();
+      RF_VERBOSE("Bias data for topic " << topicName << " updated to " << measurement);
+    }
+
+    RF_VERBOSE("\n----- /RosFilter::biasTwistCallback (" << topicName << ") ------\n");
+  }
+
+  template<typename T>
+  void RosFilter<T>::biasAccelerationCallback(const sensor_msgs::Imu::ConstPtr &msg, const CallbackData &callbackData,
+    const std::string &targetFrame)
+  {
+    const std::string &topicName = callbackData.topicName_;
+
+    RF_VERBOSE("------ RosFilter::biasAccelerationCallback (" << topicName << ") ------\n"
+             "Twist message:\n" << *msg);
+
+    Eigen::VectorXd measurement(STATE_SIZE);
+    Eigen::MatrixXd measurementCovariance(STATE_SIZE, STATE_SIZE);
+
+    measurement.setZero();
+    measurementCovariance.setZero();
+
+    // Make sure we're actually updating at least one of these variables
+    std::vector<int> updateVectorCorrected = callbackData.updateVector_;
+
+    // Prepare the twist data for inclusion in the filter
+    // Bias never includes the gravitational acceleration handling
+    if (prepareAcceleration(msg, topicName, targetFrame, false, updateVectorCorrected, measurement,
+          measurementCovariance))
+    {
+      // Save the bias data
+      if(sourceData_.find(topicName) == sourceData_.end())
+      {
+        // Create the new data storage for this source
+        sourceData_.emplace(topicName, SourceData());
+      }
+      sourceData_[topicName].bias_acceleration_ = measurement;
+      sourceData_[topicName].bias_valid_ = true;
+      sourceData_[topicName].last_bias_s_ = msg->header.stamp.toSec();
+      RF_VERBOSE("Bias data for topic " << topicName << " updated to " << measurement);
+    }
+
+    RF_VERBOSE("\n----- /RosFilter::biasAccelerationCallback (" << topicName << ") ------\n");
   }
 }  // namespace RobotLocalization
 

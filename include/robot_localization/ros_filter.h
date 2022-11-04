@@ -85,14 +85,16 @@ struct CallbackData
                const bool differential,
                const bool relative,
                const double rejectionThreshold,
-               const double rejectionThresholdInit) :
+               const double rejectionThresholdInit,
+               const double rejectionThresholdTrusted) :
     topicName_(topicName),
     updateVector_(updateVector),
     updateSum_(updateSum),
     differential_(differential),
     relative_(relative),
     rejectionThreshold_(rejectionThreshold),
-    rejectionThresholdInit_(rejectionThresholdInit)
+    rejectionThresholdInit_(rejectionThresholdInit),
+    rejectionThresholdTrusted_(rejectionThresholdTrusted)
   {
   }
 
@@ -103,6 +105,28 @@ struct CallbackData
   bool relative_;
   double rejectionThreshold_;
   double rejectionThresholdInit_;
+  double rejectionThresholdTrusted_;
+};
+
+struct SourceData
+{
+  SourceData()
+  {
+    bias_pose_.resize(STATE_SIZE);
+    bias_pose_.setZero();
+    bias_twist_.resize(STATE_SIZE);
+    bias_twist_.setZero();
+    bias_acceleration_.resize(STATE_SIZE);
+    bias_acceleration_.setZero();
+  }
+
+  bool trusted_{false};
+  double last_trusted_s_{-std::numeric_limits<double>::infinity()};  // Never trusted initially
+  Eigen::VectorXd bias_pose_;
+  Eigen::VectorXd bias_twist_;
+  Eigen::VectorXd bias_acceleration_;
+  bool bias_valid_{false};  // Invalid initially
+  double last_bias_s_{-std::numeric_limits<double>::infinity()};  // Never set initially
 };
 
 typedef std::priority_queue<MeasurementPtr, std::vector<MeasurementPtr>, Measurement> MeasurementQueue;
@@ -242,6 +266,14 @@ template<class T> class RosFilter
     //!
     void imuMagnetometerValidityCallback(const std_msgs::Bool::ConstPtr &msg, const std::string &topicName);
 
+    //! @brief Callback method for receiving all trusted sensor data
+    //! @param[in] msg - The ROS Bool message to take in.
+    //! @param[in] topicName - The topic name for the sensor data that is trusted/untrusted
+    //!
+    //! This method receives trusted sensor information for handling rejection thresholds
+    //!
+    void trustedSensorCallback(const std_msgs::Bool::ConstPtr &msg, const std::string &topicName);
+
     //! @brief Processes all measurements in the measurement queue, in temporal order
     //!
     //! @param[in] currentTime - The time at which to carry out integration (the current time)
@@ -308,6 +340,65 @@ template<class T> class RosFilter
     //! @return true if the filter output is valid, false otherwise
     //!
     bool validateFilterOutput(const nav_msgs::Odometry &message);
+
+    //! @brief Callback method for receiving bias odometry messages
+    //! @param[in] msg - The ROS odometry message to take in.
+    //! @param[in] topicName - The topic name for the odometry message (only used for debug output)
+    //! @param[in] poseCallbackData - Relevant static callback data for pose variables
+    //! @param[in] twistCallbackData - Relevant static callback data for twist variables
+    //!
+    //! This method simply separates out the pose and twist data into two new messages, and passes them into their
+    //! respective callbacks
+    //!
+    void biasOdometryCallback(const nav_msgs::Odometry::ConstPtr &msg,
+                              const std::string &topicName,
+                              const CallbackData &poseCallbackData,
+                              const CallbackData &twistCallbackData);
+
+    //! @brief Callback method for receiving bias IMU messages
+    //! @param[in] msg - The ROS IMU message to take in.
+    //! @param[in] topicName - The topic name for the IMU message (used to store data)
+    //! @param[in] poseCallbackData - Relevant static callback data for orientation variables
+    //! @param[in] twistCallbackData - Relevant static callback data for angular velocity variables
+    //! @param[in] accelCallbackData - Relevant static callback data for linear acceleration variables
+    //!
+    //! This method separates out the orientation, angular velocity, and linear acceleration data and
+    //! passed each on to its respective callback.
+    //!
+    void biasImuCallback(const sensor_msgs::Imu::ConstPtr &msg,
+                         const std::string &topicName,
+                         const CallbackData &poseCallbackData,
+                         const CallbackData &twistCallbackData,
+                         const CallbackData &accelCallbackData);
+  
+    //! @brief Callback method for receiving bias pose messages
+    //! @param[in] msg - The ROS stamped pose with covariance message to take in
+    //! @param[in] callbackData - Relevant static callback data
+    //! @param[in] targetFrame - The target frame_id into which to transform the data
+    //! @param[in] imuData - Whether this data comes from an IMU
+    //!
+    void biasPoseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr &msg,
+                          const CallbackData &callbackData,
+                          const std::string &targetFrame,
+                          const bool imuData);
+    
+    //! @brief Callback method for receiving bias twist messages
+    //! @param[in] msg - The ROS stamped twist with covariance message to take in.
+    //! @param[in] callbackData - Relevant static callback data
+    //! @param[in] targetFrame - The target frame_id into which to transform the data
+    //!
+    void biasTwistCallback(const geometry_msgs::TwistWithCovarianceStamped::ConstPtr &msg,
+                           const CallbackData &callbackData,
+                           const std::string &targetFrame);
+
+    //! @brief Callback method for receiving bias acceleration (IMU) messages
+    //! @param[in] msg - The ROS IMU message to take in.
+    //! @param[in] callbackData - Relevant static callback data
+    //! @param[in] targetFrame - The target frame_id into which to transform the data
+    //!
+    void biasAccelerationCallback(const sensor_msgs::Imu::ConstPtr &msg,
+                                  const CallbackData &callbackData,
+                                  const std::string &targetFrame);
 
   protected:
     //! @brief Finds the latest filter state before the given timestamp and makes it the current state again.
@@ -392,6 +483,7 @@ template<class T> class RosFilter
     //! @param[in] msg - The IMU message to prepare
     //! @param[in] topicName - The name of the topic over which this message was received
     //! @param[in] targetFrame - The target tf frame
+    //! @param[in] removeGraviationalAccel - whether to remove gravitational acceleration
     //! @param[in] updateVector - The update vector for the data source
     //! @param[in] measurement - The twist data converted to a measurement
     //! @param[in] measurementCovariance - The covariance of the converted measurement
@@ -399,6 +491,7 @@ template<class T> class RosFilter
     bool prepareAcceleration(const sensor_msgs::Imu::ConstPtr &msg,
                              const std::string &topicName,
                              const std::string &targetFrame,
+                             const bool &removeGravitationalAccel,
                              std::vector<int> &updateVector,
                              Eigen::VectorXd &measurement,
                              Eigen::MatrixXd &measurementCovariance);
@@ -522,6 +615,14 @@ template<class T> class RosFilter
     //!
     double frequency_;
 
+    //! @brief Timeout for trusted rejection threshold (< 0 for infinite)
+    //!
+    double trusted_timeout_;
+
+    //! @brief Timeout for bias information (<0 for infinite)
+    //!
+    double bias_timeout_;
+
     //! @brief What is the acceleration in Z due to gravity (m/s^2)? Default is +9.80665.
     //!
     double gravitationalAcc_;
@@ -628,9 +729,13 @@ template<class T> class RosFilter
     //!
     std::map<std::string, std::string> staticDiagnostics_;
 
-    //! @brief Thisobject holds dynamic correction information, if enabled, per IMU input
+    //! @brief This object holds dynamic correction information, if enabled, per IMU input
     //!
     std::map<std::string, RosFilterBiasEstimator> imuDynamicCorrectionData_;
+
+    //! @brief Holds information about data sources
+    //!
+    std::map<std::string, SourceData> sourceData_;
 
     //! @brief The most recent control input
     //!
