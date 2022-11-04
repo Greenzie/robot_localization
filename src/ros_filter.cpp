@@ -1805,8 +1805,8 @@ namespace RobotLocalization
         }
 
         RF_DEBUG("Subscribed to " << imuTopic << " (" << imuTopicName << ")\n\t" <<
-                 "subscribed to trusting source " << imuTopic << "/trusted" << " (" << imuTopicName << ")\n\t" <<
-                 "subscribed to bias source " << imuTopic << "/bias" << " (" << imuTopicName << ")\n\t" <<
+                 "Subscribed to trusting source " << imuTopic << "/trusted" << " (" << imuTopicName << ")\n\t" <<
+                 "Subscribed to bias source " << imuTopic << "/bias" << " (" << imuTopicName << ")\n\t" <<
                  imuTopicName << "_differential is " << (differential ? "true" : "false") << "\n\t" <<
                  imuTopicName << "_pose_rejection_threshold is " << poseMahalanobisThresh << "\n\t" <<
                  imuTopicName << "_pose_rejection_threshold_init is " << poseMahalanobisThreshInit << "\n\t" <<
