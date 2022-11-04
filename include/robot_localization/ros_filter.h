@@ -121,12 +121,12 @@ struct SourceData
   }
 
   bool trusted_{false};
-  double last_trusted_s_{-99999.0};  // Never trusted initially
+  double last_trusted_s_{-std::numeric_limits<double>::infinity()};  // Never trusted initially
   Eigen::VectorXd bias_pose_;
   Eigen::VectorXd bias_twist_;
   Eigen::VectorXd bias_acceleration_;
   bool bias_valid_{false};  // Invalid initially
-  double last_bias_s_{-99999.0};  // Never set initially
+  double last_bias_s_{-std::numeric_limits<double>::infinity()};  // Never set initially
 };
 
 typedef std::priority_queue<MeasurementPtr, std::vector<MeasurementPtr>, Measurement> MeasurementQueue;
@@ -350,8 +350,10 @@ template<class T> class RosFilter
     //! This method simply separates out the pose and twist data into two new messages, and passes them into their
     //! respective callbacks
     //!
-    void biasOdometryCallback(const nav_msgs::Odometry::ConstPtr &msg, const std::string &topicName,
-      const CallbackData &poseCallbackData, const CallbackData &twistCallbackData);
+    void biasOdometryCallback(const nav_msgs::Odometry::ConstPtr &msg,
+                              const std::string &topicName,
+                              const CallbackData &poseCallbackData,
+                              const CallbackData &twistCallbackData);
 
     //! @brief Callback method for receiving bias IMU messages
     //! @param[in] msg - The ROS IMU message to take in.
@@ -363,9 +365,11 @@ template<class T> class RosFilter
     //! This method separates out the orientation, angular velocity, and linear acceleration data and
     //! passed each on to its respective callback.
     //!
-    void biasImuCallback(const sensor_msgs::Imu::ConstPtr &msg, const std::string &topicName,
-      const CallbackData &poseCallbackData, const CallbackData &twistCallbackData,
-      const CallbackData &accelCallbackData);
+    void biasImuCallback(const sensor_msgs::Imu::ConstPtr &msg,
+                         const std::string &topicName,
+                         const CallbackData &poseCallbackData,
+                         const CallbackData &twistCallbackData,
+                         const CallbackData &accelCallbackData);
   
     //! @brief Callback method for receiving bias pose messages
     //! @param[in] msg - The ROS stamped pose with covariance message to take in
@@ -374,9 +378,9 @@ template<class T> class RosFilter
     //! @param[in] imuData - Whether this data comes from an IMU
     //!
     void biasPoseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr &msg,
-                      const CallbackData &callbackData,
-                      const std::string &targetFrame,
-                      const bool imuData);
+                          const CallbackData &callbackData,
+                          const std::string &targetFrame,
+                          const bool imuData);
     
     //! @brief Callback method for receiving bias twist messages
     //! @param[in] msg - The ROS stamped twist with covariance message to take in.
