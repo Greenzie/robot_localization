@@ -1512,8 +1512,8 @@ namespace RobotLocalization
         }
 
         RF_DEBUG("Subscribed to " << twistTopic << " (" << twistTopicName << ")\n\t" <<
-                 "subscribed to trusting source " << twistTopic << "/trusted" << " (" << twistTopicName << ")\n\t" <<
-                 "subscribed to bias source " << twistTopic << "/bias" << " (" << twistTopicName << ")\n\t" <<
+                 "Subscribed to trusting source " << twistTopic << "/trusted" << " (" << twistTopicName << ")\n\t" <<
+                 "Subscribed to bias source " << twistTopic << "/bias" << " (" << twistTopicName << ")\n\t" <<
                  twistTopicName << "_rejection_threshold is " << twistMahalanobisThresh << "\n\t" <<
                  twistTopicName << "_rejection_threshold_init is " << twistMahalanobisThreshInit << "\n\t" <<
                  twistTopicName << "_rejection_threshold_trusted is " << twistMahalanobisThreshTrusted << "\n\t" <<
