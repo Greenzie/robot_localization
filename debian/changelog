@@ -1,3 +1,9 @@
+ros-noetic-robot-localization (102.7.3-focal8) focal; urgency=medium
+
+  * Added trusted inputs and bias handling
+
+ -- Joel <joel@greenzie.com>  Mon, 07 Nov 2022 11:31:36 -0500
+
 ros-noetic-robot-localization (102.7.3-focal7) focal; urgency=medium
 
   * Improved logic for yaw estimation
