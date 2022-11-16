@@ -63,6 +63,9 @@ struct Measurement
   // The time stamp of the most recent control term (needed for lagged data)
   double latestControlTime_;
 
+  // Always log the mahalanobis distance for the particula measurement if the debug flag is on
+  bool debugLogMahalanobisDistance_;
+
   // The Mahalanobis distance threshold in number of sigmas
   double mahalanobisThresh_;
 
@@ -440,6 +443,13 @@ class FilterBase
     virtual bool checkMahalanobisThreshold(const Eigen::VectorXd &innovation,
                                            const Eigen::MatrixXd &invCovariance,
                                            const double nsigmas);
+
+    //! @brief Logs the mahalanobis distance if in debug mode. Useful if inspecting a measurement from a particular source. Or on a specific dimension.
+    //! @param[in] innovation - The difference between the measurement and the state
+    //! @param[in] invCovariance - The innovation error
+    //!
+    virtual void logMahalanobisThreshold(const Eigen::VectorXd &innovation,
+                                           const Eigen::MatrixXd &invCovariance);
 
     //! @brief Converts the control term to an acceleration to be applied in the prediction step
     //! @param[in] referenceTime - The time of the update (measurement used in the prediction step)

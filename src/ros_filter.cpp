@@ -275,6 +275,7 @@ namespace RobotLocalization
                            measurement,
                            measurementCovariance,
                            updateVectorCorrected,
+                           callbackData.debugLogMahalanobisDistance_,
                            rejectionThreshold,
                            callbackData.rejectionThresholdInit_,
                            msg->header.stamp);
@@ -352,6 +353,7 @@ namespace RobotLocalization
                                         const Eigen::VectorXd &measurement,
                                         const Eigen::MatrixXd &measurementCovariance,
                                         const std::vector<int> &updateVector,
+                                        const bool debugLogMahalanobisDistance,
                                         const double mahalanobisThresh,
                                         const double mahalanobisThreshInit,
                                         const ros::Time &time)
@@ -363,6 +365,7 @@ namespace RobotLocalization
     meas->covariance_ = measurementCovariance;
     meas->updateVector_ = updateVector;
     meas->time_ = time.toSec();
+    meas->debugLogMahalanobisDistance_ = debugLogMahalanobisDistance;
     meas->mahalanobisThresh_ = mahalanobisThresh;
     meas->mahalanobisThreshInit_ = mahalanobisThreshInit;
     meas->latestControl_ = latestControl_;
@@ -1182,6 +1185,10 @@ namespace RobotLocalization
         nhLocal_.getParam(odomTopicName, odomTopic);
 
         // Check for pose rejection threshold
+        bool debugLogMahalanobisDistance;
+        nhLocal_.param(odomTopicName + std::string("_debug_log_mahalanobis_distance"),
+                       debugLogMahalanobisDistance,
+                       false);
         double poseMahalanobisThresh;
         nhLocal_.param(odomTopicName + std::string("_pose_rejection_threshold"),
                        poseMahalanobisThresh,
@@ -1224,9 +1231,9 @@ namespace RobotLocalization
         nhLocal_.param(odomTopicName + "_queue_size", odomQueueSize, 1);
 
         const CallbackData poseCallbackData(odomTopicName + "_pose", poseUpdateVec, poseUpdateSum, differential,
-          relative, poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
+          relative, debugLogMahalanobisDistance, poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
         const CallbackData twistCallbackData(odomTopicName + "_twist", twistUpdateVec, twistUpdateSum, false, false,
-          twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
+        false, twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
 
         bool nodelayOdom = false;
         nhLocal_.param(odomTopicName + "_nodelay", nodelayOdom, false);
@@ -1343,6 +1350,10 @@ namespace RobotLocalization
         nhLocal_.getParam(poseTopicName, poseTopic);
 
         // Check for pose rejection threshold
+        bool debugLogMahalanobisDistance;
+        nhLocal_.param(poseTopicName + std::string("_debug_log_mahalanobis_distance"),
+                       debugLogMahalanobisDistance,
+                       false);
         double poseMahalanobisThresh;
         nhLocal_.param(poseTopicName + std::string("_rejection_threshold"),
                        poseMahalanobisThresh,
@@ -1376,7 +1387,7 @@ namespace RobotLocalization
         if (poseUpdateSum > 0)
         {
           const CallbackData callbackData(poseTopicName, poseUpdateVec, poseUpdateSum, differential, relative,
-            poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
+                                     debugLogMahalanobisDistance, poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
 
           topicSubs_.push_back(
             nh_.subscribe<geometry_msgs::PoseWithCovarianceStamped>(poseTopic, poseQueueSize,
@@ -1450,6 +1461,10 @@ namespace RobotLocalization
         nhLocal_.getParam(twistTopicName, twistTopic);
 
         // Check for twist rejection threshold
+        bool debugLogMahalanobisDistance;
+        nhLocal_.param(twistTopicName + std::string("_debug_log_mahalanobis_distance"),
+                       debugLogMahalanobisDistance,
+                       false);
         double twistMahalanobisThresh;
         nhLocal_.param(twistTopicName + std::string("_rejection_threshold"),
                        twistMahalanobisThresh,
@@ -1478,7 +1493,7 @@ namespace RobotLocalization
         if (twistUpdateSum > 0)
         {
           const CallbackData callbackData(twistTopicName, twistUpdateVec, twistUpdateSum, false, false,
-            twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
+          debugLogMahalanobisDistance, twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
 
           topicSubs_.push_back(
             nh_.subscribe<geometry_msgs::TwistWithCovarianceStamped>(twistTopic, twistQueueSize,
@@ -1554,6 +1569,10 @@ namespace RobotLocalization
         nhLocal_.getParam(imuTopicName, imuTopic);
 
         // Check for pose rejection threshold
+        bool debugLogMahalanobisDistance;
+        nhLocal_.param(imuTopicName + std::string("_debug_log_mahalanobis_distance"),
+                       debugLogMahalanobisDistance,
+                       false);
         double poseMahalanobisThresh;
         nhLocal_.param(imuTopicName + std::string("_pose_rejection_threshold"),
                        poseMahalanobisThresh,
@@ -1684,12 +1703,13 @@ namespace RobotLocalization
 
         if (poseUpdateSum + twistUpdateSum + accelUpdateSum > 0)
         {
+          // TODO check debugLogMahalanobisDistance for IMU odometry source
           const CallbackData poseCallbackData(imuTopicName + "_pose", poseUpdateVec, poseUpdateSum, differential,
-            relative, poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
+            relative, debugLogMahalanobisDistance, poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
           const CallbackData twistCallbackData(imuTopicName + "_twist", twistUpdateVec, twistUpdateSum, differential,
-            relative, twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
+            relative, debugLogMahalanobisDistance, twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
           const CallbackData accelCallbackData(imuTopicName + "_acceleration", accelUpdateVec, accelUpdateSum,
-            differential, relative, accelMahalanobisThresh, accelMahalanobisThreshInit, accelMahalanobisThreshTrusted);
+            differential, relative, debugLogMahalanobisDistance, accelMahalanobisThresh, accelMahalanobisThreshInit, accelMahalanobisThreshTrusted);
 
           topicSubs_.push_back(
             nh_.subscribe<sensor_msgs::Imu>(imuTopic, imuQueueSize,
@@ -2147,6 +2167,7 @@ namespace RobotLocalization
                            measurement,
                            measurementCovariance,
                            updateVectorCorrected,
+                           callbackData.debugLogMahalanobisDistance_,
                            rejectionThreshold,
                            callbackData.rejectionThresholdInit_,
                            msg->header.stamp);
@@ -2541,6 +2562,7 @@ namespace RobotLocalization
                            measurement,
                            measurementCovariance,
                            updateVectorCorrected,
+                           callbackData.debugLogMahalanobisDistance_,
                            rejectionThreshold,
                            callbackData.rejectionThresholdInit_,
                            msg->header.stamp);

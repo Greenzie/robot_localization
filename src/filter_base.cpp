@@ -491,4 +491,11 @@ namespace RobotLocalization
 
     return true;
   }
+
+  void FilterBase::logMahalanobisThreshold(const Eigen::VectorXd &innovation,
+                                             const Eigen::MatrixXd &invCovariance)
+  {
+    double sqMahalanobis = innovation.dot(invCovariance * innovation);
+    FB_DEBUG("Squared Mahalanobis is," << sqMahalanobis << "\n");
+  }
 }  // namespace RobotLocalization
