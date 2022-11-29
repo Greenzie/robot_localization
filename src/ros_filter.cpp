@@ -275,7 +275,7 @@ namespace RobotLocalization
                            measurement,
                            measurementCovariance,
                            updateVectorCorrected,
-                           callbackData.debugLogMahalanobisDistance_,
+                           callbackData.publishMahalanobisDistance_,
                            rejectionThreshold,
                            callbackData.rejectionThresholdInit_,
                            msg->header.stamp);
@@ -353,7 +353,7 @@ namespace RobotLocalization
                                         const Eigen::VectorXd &measurement,
                                         const Eigen::MatrixXd &measurementCovariance,
                                         const std::vector<int> &updateVector,
-                                        const bool debugLogMahalanobisDistance,
+                                        const bool publishMahalanobisDistance,
                                         const double mahalanobisThresh,
                                         const double mahalanobisThreshInit,
                                         const ros::Time &time)
@@ -365,7 +365,7 @@ namespace RobotLocalization
     meas->covariance_ = measurementCovariance;
     meas->updateVector_ = updateVector;
     meas->time_ = time.toSec();
-    meas->debugLogMahalanobisDistance_ = debugLogMahalanobisDistance;
+    meas->publishMahalanobisDistance_ = publishMahalanobisDistance;
     meas->mahalanobisThresh_ = mahalanobisThresh;
     meas->mahalanobisThreshInit_ = mahalanobisThreshInit;
     meas->latestControl_ = latestControl_;
@@ -1185,10 +1185,14 @@ namespace RobotLocalization
         nhLocal_.getParam(odomTopicName, odomTopic);
 
         // Check for pose rejection threshold
-        bool debugLogMahalanobisDistance;
-        nhLocal_.param(odomTopicName + std::string("_debug_log_mahalanobis_distance"),
-                       debugLogMahalanobisDistance,
+        bool publishMahalanobisDistance;
+        nhLocal_.param(odomTopicName + std::string("_publish_mahalanobis_distance"),
+                       publishMahalanobisDistance,
                        false);
+        if (publishMahalanobisDistance)
+        {
+          mahalanobisDistancePubMap_[odomTopicName+ "_pose"] = nhLocal_.advertise<std_msgs::Float64>(odomTopicName+ "_pose" + "/squared_mahalanobis_dist", 20);
+        }
         double poseMahalanobisThresh;
         nhLocal_.param(odomTopicName + std::string("_pose_rejection_threshold"),
                        poseMahalanobisThresh,
@@ -1203,6 +1207,11 @@ namespace RobotLocalization
                        std::numeric_limits<double>::max());
 
         // Check for twist rejection threshold
+        if (publishMahalanobisDistance)
+        {
+          // use the pose param result for the odom source
+          mahalanobisDistancePubMap_[odomTopicName+ "_twist"] = nhLocal_.advertise<std_msgs::Float64>(odomTopicName+ "_twist" + "/squared_mahalanobis_dist", 20);
+        }
         double twistMahalanobisThresh;
         nhLocal_.param(odomTopicName + std::string("_twist_rejection_threshold"),
                        twistMahalanobisThresh,
@@ -1231,7 +1240,7 @@ namespace RobotLocalization
         nhLocal_.param(odomTopicName + "_queue_size", odomQueueSize, 1);
 
         const CallbackData poseCallbackData(odomTopicName + "_pose", poseUpdateVec, poseUpdateSum, differential,
-          relative, debugLogMahalanobisDistance, poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
+          relative, publishMahalanobisDistance, poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
         const CallbackData twistCallbackData(odomTopicName + "_twist", twistUpdateVec, twistUpdateSum, false, false,
         false, twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
 
@@ -1350,10 +1359,14 @@ namespace RobotLocalization
         nhLocal_.getParam(poseTopicName, poseTopic);
 
         // Check for pose rejection threshold
-        bool debugLogMahalanobisDistance;
-        nhLocal_.param(poseTopicName + std::string("_debug_log_mahalanobis_distance"),
-                       debugLogMahalanobisDistance,
+        bool publishMahalanobisDistance;
+        nhLocal_.param(poseTopicName + std::string("_publish_mahalanobis_distance"),
+                       publishMahalanobisDistance,
                        false);
+        if (publishMahalanobisDistance)
+        {
+          mahalanobisDistancePubMap_[poseTopicName] = nhLocal_.advertise<std_msgs::Float64>(poseTopicName + "/squared_mahalanobis_dist", 20);
+        }
         double poseMahalanobisThresh;
         nhLocal_.param(poseTopicName + std::string("_rejection_threshold"),
                        poseMahalanobisThresh,
@@ -1387,7 +1400,7 @@ namespace RobotLocalization
         if (poseUpdateSum > 0)
         {
           const CallbackData callbackData(poseTopicName, poseUpdateVec, poseUpdateSum, differential, relative,
-                                     debugLogMahalanobisDistance, poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
+                                     publishMahalanobisDistance, poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
 
           topicSubs_.push_back(
             nh_.subscribe<geometry_msgs::PoseWithCovarianceStamped>(poseTopic, poseQueueSize,
@@ -1461,10 +1474,14 @@ namespace RobotLocalization
         nhLocal_.getParam(twistTopicName, twistTopic);
 
         // Check for twist rejection threshold
-        bool debugLogMahalanobisDistance;
-        nhLocal_.param(twistTopicName + std::string("_debug_log_mahalanobis_distance"),
-                       debugLogMahalanobisDistance,
+        bool publishMahalanobisDistance;
+        nhLocal_.param(twistTopicName + std::string("_publish_mahalanobis_distance"),
+                       publishMahalanobisDistance,
                        false);
+        if (publishMahalanobisDistance)
+        {
+          mahalanobisDistancePubMap_[twistTopicName] = nhLocal_.advertise<std_msgs::Float64>(twistTopicName + "/squared_mahalanobis_dist", 20);
+        }
         double twistMahalanobisThresh;
         nhLocal_.param(twistTopicName + std::string("_rejection_threshold"),
                        twistMahalanobisThresh,
@@ -1493,7 +1510,7 @@ namespace RobotLocalization
         if (twistUpdateSum > 0)
         {
           const CallbackData callbackData(twistTopicName, twistUpdateVec, twistUpdateSum, false, false,
-          debugLogMahalanobisDistance, twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
+          publishMahalanobisDistance, twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
 
           topicSubs_.push_back(
             nh_.subscribe<geometry_msgs::TwistWithCovarianceStamped>(twistTopic, twistQueueSize,
@@ -1569,10 +1586,14 @@ namespace RobotLocalization
         nhLocal_.getParam(imuTopicName, imuTopic);
 
         // Check for pose rejection threshold
-        bool debugLogMahalanobisDistance;
-        nhLocal_.param(imuTopicName + std::string("_debug_log_mahalanobis_distance"),
-                       debugLogMahalanobisDistance,
+        bool publishMahalanobisDistance;
+        nhLocal_.param(imuTopicName + std::string("_publish_mahalanobis_distance"),
+                       publishMahalanobisDistance,
                        false);
+        if (publishMahalanobisDistance)
+        {
+          mahalanobisDistancePubMap_[imuTopicName + "_pose"] = nhLocal_.advertise<std_msgs::Float64>(imuTopicName + "_pose" + "/squared_mahalanobis_dist", 20);
+        }
         double poseMahalanobisThresh;
         nhLocal_.param(imuTopicName + std::string("_pose_rejection_threshold"),
                        poseMahalanobisThresh,
@@ -1587,6 +1608,11 @@ namespace RobotLocalization
                        std::numeric_limits<double>::max());
 
         // Check for angular velocity rejection threshold
+        if (publishMahalanobisDistance)
+        {
+          // use the pose param result for the imu source
+          mahalanobisDistancePubMap_[imuTopicName + "_twist"] = nhLocal_.advertise<std_msgs::Float64>(imuTopicName + "_twist" + "/squared_mahalanobis_dist", 20);
+        }
         double twistMahalanobisThresh;
         std::string imuTwistRejectionName =
           imuTopicName + std::string("_twist_rejection_threshold");
@@ -1601,6 +1627,11 @@ namespace RobotLocalization
         nhLocal_.param(imuTwistRejectionName, twistMahalanobisThreshTrusted, std::numeric_limits<double>::max());
 
         // Check for acceleration rejection threshold
+        if (publishMahalanobisDistance)
+        {
+          // use the pose param result for the imu source
+          mahalanobisDistancePubMap_[imuTopicName + "_acceleration"] = nhLocal_.advertise<std_msgs::Float64>(imuTopicName + "_acceleration" + "/squared_mahalanobis_dist", 20);
+        }
         double accelMahalanobisThresh;
         nhLocal_.param(imuTopicName + std::string("_linear_acceleration_rejection_threshold"),
                        accelMahalanobisThresh,
@@ -1703,13 +1734,13 @@ namespace RobotLocalization
 
         if (poseUpdateSum + twistUpdateSum + accelUpdateSum > 0)
         {
-          // TODO check debugLogMahalanobisDistance for IMU odometry source
+          // TODO check publishMahalanobisDistance for IMU odometry source
           const CallbackData poseCallbackData(imuTopicName + "_pose", poseUpdateVec, poseUpdateSum, differential,
-            relative, debugLogMahalanobisDistance, poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
+            relative, publishMahalanobisDistance, poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
           const CallbackData twistCallbackData(imuTopicName + "_twist", twistUpdateVec, twistUpdateSum, differential,
-            relative, debugLogMahalanobisDistance, twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
+            relative, publishMahalanobisDistance, twistMahalanobisThresh, twistMahalanobisThreshInit, twistMahalanobisThreshTrusted);
           const CallbackData accelCallbackData(imuTopicName + "_acceleration", accelUpdateVec, accelUpdateSum,
-            differential, relative, debugLogMahalanobisDistance, accelMahalanobisThresh, accelMahalanobisThreshInit, accelMahalanobisThreshTrusted);
+            differential, relative, publishMahalanobisDistance, accelMahalanobisThresh, accelMahalanobisThreshInit, accelMahalanobisThreshTrusted);
 
           topicSubs_.push_back(
             nh_.subscribe<sensor_msgs::Imu>(imuTopic, imuQueueSize,
@@ -2167,7 +2198,7 @@ namespace RobotLocalization
                            measurement,
                            measurementCovariance,
                            updateVectorCorrected,
-                           callbackData.debugLogMahalanobisDistance_,
+                           callbackData.publishMahalanobisDistance_,
                            rejectionThreshold,
                            callbackData.rejectionThresholdInit_,
                            msg->header.stamp);
@@ -2385,6 +2416,19 @@ namespace RobotLocalization
       accelPub_.publish(filteredAcceleration);
     }
 
+    // Publish Squared Mahalanobis distances and clear the mDistMap for the next periodic update
+    std::map<std::string,double> mDistMap = filter_.getCopyAndClearMahalanobisDistanceMap();
+    for (auto &kv: mDistMap)
+    {
+      auto search = mahalanobisDistancePubMap_.find(kv.first); 
+      if(search != mahalanobisDistancePubMap_.end())
+      {
+        std_msgs::Float64 sendMsg;
+        sendMsg.data = kv.second;
+        mahalanobisDistancePubMap_[kv.first].publish(sendMsg);
+      }
+    }
+
     // Publish rejected measurement topics since last predict cycle, if desired
     if (publishRejectedMeasurements_)
     {
@@ -2562,7 +2606,7 @@ namespace RobotLocalization
                            measurement,
                            measurementCovariance,
                            updateVectorCorrected,
-                           callbackData.debugLogMahalanobisDistance_,
+                           callbackData.publishMahalanobisDistance_,
                            rejectionThreshold,
                            callbackData.rejectionThresholdInit_,
                            msg->header.stamp);

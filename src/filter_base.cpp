@@ -281,7 +281,20 @@ namespace RobotLocalization
       prepareCorrect(measurement, updateIndices, innovationSubset, measurementCovarianceSubset,
                      kalmanGainSubset, innovMatInv, auxMat);
 
-      if (checkMahalanobisThreshold(innovationSubset, innovMatInv, measurement.mahalanobisThreshInit_))
+      double sqMahalanobis = getSquaredMahalanobisDistance(innovationSubset, innovMatInv);
+      if ( measurement.publishMahalanobisDistance_)
+      {
+      //  Useful if inspecting a measurement from a particular source. Or on a specific dimension.
+      std::map<std::string, double>& mDistMap = measurementMapPeriodicMaxSquaredMahalanobisDistance_;
+      if(auto search = mDistMap.find(measurement.topicName_); search == mDistMap.end())
+      {
+        mDistMap[measurement.topicName_] = sqMahalanobis;
+      }
+      double &mDistReference = mDistMap.at(measurement.topicName_);
+        // we filter for the max per each periodic update
+        mDistReference = std::max(mDistReference, sqMahalanobis);
+      }
+      if (checkMahalanobisThreshold(sqMahalanobis, measurement.mahalanobisThreshInit_))
       {
         FB_VERBOSE("First measurement. Initializing filter.\n");
 
@@ -472,30 +485,21 @@ namespace RobotLocalization
     state_(StateMemberYaw)   = FilterUtilities::clampRotation(state_(StateMemberYaw));
   }
 
-  bool FilterBase::checkMahalanobisThreshold(const Eigen::VectorXd &innovation,
-                                             const Eigen::MatrixXd &invCovariance,
+  bool FilterBase::checkMahalanobisThreshold(const double sqMahalanobis,
                                              const double nsigmas)
   {
-    double sqMahalanobis = innovation.dot(invCovariance * innovation);
-    double threshold = nsigmas * nsigmas;
-
+    double threshold = nsigmas*nsigmas;
     if (sqMahalanobis >= threshold)
     {
-      FB_DEBUG("Innovation mahalanobis distance test failed. Squared Mahalanobis is: " << sqMahalanobis << "\n" <<
-               "Threshold is: " << threshold << "\n" <<
-               "Innovation is: " << innovation << "\n" <<
-               "Innovation covariance is:\n" << invCovariance << "\n");
-
       return false;
     }
-
     return true;
   }
 
-  void FilterBase::logMahalanobisThreshold(const Eigen::VectorXd &innovation,
+  double FilterBase::getSquaredMahalanobisDistance(const Eigen::VectorXd &innovation,
                                              const Eigen::MatrixXd &invCovariance)
   {
     double sqMahalanobis = innovation.dot(invCovariance * innovation);
-    FB_DEBUG("Squared Mahalanobis is," << sqMahalanobis << "\n");
+    return sqMahalanobis;
   }
 }  // namespace RobotLocalization

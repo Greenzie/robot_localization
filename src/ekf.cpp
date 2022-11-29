@@ -179,15 +179,21 @@ namespace RobotLocalization
     prepareCorrect(measurement, updateIndices, innovationSubset, measurementCovarianceSubset,
                    kalmanGainSubset, hphrInv, stateToMeasurementSubset);
 
-    if ( measurement.debugLogMahalanobisDistance_)
+    double sqMahalanobis = getSquaredMahalanobisDistance(innovationSubset, hphrInv);
+    if ( measurement.publishMahalanobisDistance_)
     {
-      // TODO add to filter base and ukf
-      FB_DEBUG("logMahalanobisThreshold - "<<measurement.topicName_);
-      logMahalanobisThreshold(innovationSubset, hphrInv);
+     //  Useful if inspecting a measurement from a particular source. Or on a specific dimension.
+      std::map<std::string, double>& mDistMap = measurementMapPeriodicMaxSquaredMahalanobisDistance_;
+      if(auto search = mDistMap.find(measurement.topicName_); search == mDistMap.end())
+      {
+        mDistMap[measurement.topicName_] = sqMahalanobis;
+      }
+      double &mDistReference = mDistMap.at(measurement.topicName_);
+      // we filter for the max per each periodic update
+      mDistReference = std::max(mDistReference, sqMahalanobis);
     }
-
     // (2) Check Mahalanobis distance between mapped measurement and state.
-    if (checkMahalanobisThreshold(innovationSubset, hphrInv, measurement.mahalanobisThresh_))
+    if (checkMahalanobisThreshold(sqMahalanobis, measurement.mahalanobisThresh_))
     {
       // (3) Apply the gain to the difference between the state and measurement: x = x + K(z - Hx)
       state_.noalias() += kalmanGainSubset * innovationSubset;

@@ -42,6 +42,7 @@
 #include <robot_localization/ToggleFilterProcessing.h>
 
 #include <ros/ros.h>
+#include <std_msgs/Float64.h>
 #include <std_msgs/String.h>
 #include <std_msgs/Bool.h>
 #include <std_srvs/Empty.h>
@@ -84,7 +85,7 @@ struct CallbackData
                const int updateSum,
                const bool differential,
                const bool relative,
-               const bool debugLogMahalanobisDistance,
+               const bool publishMahalanobisDistance,
                const double rejectionThreshold,
                const double rejectionThresholdInit,
                const double rejectionThresholdTrusted) :
@@ -93,7 +94,7 @@ struct CallbackData
     updateSum_(updateSum),
     differential_(differential),
     relative_(relative),
-    debugLogMahalanobisDistance_(debugLogMahalanobisDistance),
+    publishMahalanobisDistance_(publishMahalanobisDistance),
     rejectionThreshold_(rejectionThreshold),
     rejectionThresholdInit_(rejectionThresholdInit),
     rejectionThresholdTrusted_(rejectionThresholdTrusted)
@@ -105,7 +106,7 @@ struct CallbackData
   int updateSum_;
   bool differential_;
   bool relative_;
-  bool debugLogMahalanobisDistance_;
+  bool publishMahalanobisDistance_;
   double rejectionThreshold_;
   double rejectionThresholdInit_;
   double rejectionThresholdTrusted_;
@@ -210,7 +211,7 @@ template<class T> class RosFilter
                             const Eigen::VectorXd &measurement,
                             const Eigen::MatrixXd &measurementCovariance,
                             const std::vector<int> &updateVector,
-                            const bool debugLogMahalanobisDistance,
+                            const bool publishMahalanobisDistance,
                             const double mahalanobisThresh,
                             const double mahalanobisThreshInit,
                             const ros::Time &time);
@@ -828,6 +829,10 @@ template<class T> class RosFilter
     //! @brief position publisher
     //!
     ros::Publisher positionPub_;
+
+    //! @brief A map of publishers per each odometry topic with the param set for publishing
+    //!
+    std::map<std::string, ros::Publisher> mahalanobisDistancePubMap_;
 
     //! @brief rejected measurements topics publisher
     //!
