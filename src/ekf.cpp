@@ -159,6 +159,7 @@ namespace RobotLocalization
     FB_DEBUG("---------------------- Ekf::correct ----------------------\n" <<
              "State is:\n" << state_ << "\n"
              "Topic is:\n" << measurement.topicName_ << "\n"
+             "Time is:\n" << measurement.time_ << "\n"
              "Measurement is:\n" << measurement.measurement_ << "\n"
              "Measurement topic name is:\n" << measurement.topicName_ << "\n\n"
              "Measurement covariance is:\n" << measurement.covariance_ << "\n");
@@ -212,6 +213,7 @@ namespace RobotLocalization
   {
     FB_DEBUG("---------------------- Ekf::predict ----------------------\n" <<
              "delta is " << delta << "\n" <<
+             "end time is " << referenceTime << "\n" <<
              "state is " << state_ << "\n");
 
     double roll = state_(StateMemberRoll);

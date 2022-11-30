@@ -489,6 +489,8 @@ namespace RobotLocalization
       return false;
     }
 
+    FB_DEBUG("Innovation mahalanobis distance test passed. Squared Mahalanobis is: " << sqMahalanobis << "\n");
+
     return true;
   }
 }  // namespace RobotLocalization

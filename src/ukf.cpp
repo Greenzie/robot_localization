@@ -268,6 +268,8 @@ namespace RobotLocalization
   {
     FB_DEBUG("---------------------- Ukf::correct ----------------------\n" <<
              "State is:\n" << state_ <<
+             "\nTopic is:\n" << measurement.topicName_ <<
+             "\nTime is:\n" << measurement.time_ <<
              "\nMeasurement is:\n" << measurement.measurement_ <<
              "\nMeasurement covariance is:\n" << measurement.covariance_ << "\n");
     
@@ -317,6 +319,7 @@ namespace RobotLocalization
   {
     FB_DEBUG("---------------------- Ukf::predict ----------------------\n" <<
              "delta is " << delta <<
+             "end time is " << referenceTime << "\n" <<
              "\nstate is " << state_ << "\n");
 
     prepareControl(referenceTime, delta);
