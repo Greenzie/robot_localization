@@ -388,9 +388,9 @@ class FilterBase
     //!
     void setSaveRejectedMeasurementTopics(bool save);
 
-    //! @brief Returns a copy of any rejected measurements topics and clears the internal vector
+    //! @brief Returns a copy of the Mahalanobis distance map and clears the member variables data.
     //!
-    //! @param[out] rejected - vector of rejected measurement topics since the last call
+    //! @return the latest topic-to-mahalanobis distance map.
     //!
     std::map<std::string, double> getCopyAndClearMahalanobisDistanceMap()
     { 
