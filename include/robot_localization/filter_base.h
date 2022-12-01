@@ -63,7 +63,7 @@ struct Measurement
   // The time stamp of the most recent control term (needed for lagged data)
   double latestControlTime_;
 
-  // Always log the mahalanobis distance for the particula measurement if the debug flag is on
+  // Always publish the mahalanobis distance for the particular measurement
   bool publishMahalanobisDistance_;
 
   // The Mahalanobis distance threshold in number of sigmas
