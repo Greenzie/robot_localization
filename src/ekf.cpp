@@ -156,9 +156,13 @@ namespace RobotLocalization
 
   void Ekf::correct(const Measurement &measurement)
   {
+    std::ostringstream sstream;
+    sstream << std::setprecision(16) << measurement.time_;
+    std::string timeAsString = sstream.str();
     FB_DEBUG("---------------------- Ekf::correct ----------------------\n" <<
              "State is:\n" << state_ << "\n"
              "Topic is:\n" << measurement.topicName_ << "\n"
+             "Time is: " << timeAsString << "\n"
              "Measurement is:\n" << measurement.measurement_ << "\n"
              "Measurement topic name is:\n" << measurement.topicName_ << "\n\n"
              "Measurement covariance is:\n" << measurement.covariance_ << "\n");
@@ -210,8 +214,12 @@ namespace RobotLocalization
 
   void Ekf::predict(const double referenceTime, const double delta)
   {
+    std::ostringstream sstream;
+    sstream << std::setprecision(16) << referenceTime;
+    std::string timeAsString = sstream.str();
     FB_DEBUG("---------------------- Ekf::predict ----------------------\n" <<
              "delta is " << delta << "\n" <<
+             "end time is " << timeAsString << "\n" <<
              "state is " << state_ << "\n");
 
     double roll = state_(StateMemberRoll);
