@@ -187,7 +187,7 @@ namespace RobotLocalization
     FB_DEBUG("Squared Mahalanobis is: " << sqMahalanobis << "\n" <<
               "Threshold is: " << measurement.mahalanobisThresh_*measurement.mahalanobisThresh_ << "\n" <<
               "Innovation is: " << innovationSubset << "\n" <<
-              "Innovation covariance is:\n" << innovMatInv << "\n");
+              "Innovation covariance is:\n" << hphrInv << "\n");
     if ( measurement.publishMahalanobisDistance_)
     {
      //  Useful if inspecting a measurement from a particular source. Or on a specific dimension.

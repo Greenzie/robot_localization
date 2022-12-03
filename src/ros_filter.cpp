@@ -1365,7 +1365,7 @@ namespace RobotLocalization
                        false);
         if (publishMahalanobisDistance)
         {
-          mahalanobisDistancePubMap_[poseTopicName] = nhLocal_.advertise<std_msgs::Float64>(poseTopicName + "/squared_mahalanobis_dist", 20);
+          mahalanobisDistancePubMap_[poseTopicName+ "_pose"] = nhLocal_.advertise<std_msgs::Float64>(poseTopicName+ "_pose" + "/squared_mahalanobis_dist", 20);
         }
         double poseMahalanobisThresh;
         nhLocal_.param(poseTopicName + std::string("_rejection_threshold"),
@@ -1480,7 +1480,7 @@ namespace RobotLocalization
                        false);
         if (publishMahalanobisDistance)
         {
-          mahalanobisDistancePubMap_[twistTopicName] = nhLocal_.advertise<std_msgs::Float64>(twistTopicName + "/squared_mahalanobis_dist", 20);
+          mahalanobisDistancePubMap_[twistTopicName+ "_twist"] = nhLocal_.advertise<std_msgs::Float64>(twistTopicName+ "_twist" + "/squared_mahalanobis_dist", 20);
         }
         double twistMahalanobisThresh;
         nhLocal_.param(twistTopicName + std::string("_rejection_threshold"),
