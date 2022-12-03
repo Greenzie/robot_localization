@@ -7,7 +7,7 @@
  * are met:
  *
  * 1. Redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer.
+ * notice, this list of conditions and the following src/ukf.cpp/ukf.cppimer.
  * 2. Redistributions in binary form must reproduce the above
  * copyright notice, this list of conditions and the following
  * disclaimer in the documentation and/or other materials provided
@@ -282,6 +282,10 @@ namespace RobotLocalization
                      kalmanGainSubset, innovMatInv, auxMat);
 
       double sqMahalanobis = getSquaredMahalanobisDistance(innovationSubset, innovMatInv);
+      FB_DEBUG("Squared Mahalanobis is: " << sqMahalanobis << "\n" <<
+               "Threshold is: " << measurement.mahalanobisThreshInit_*measurement.mahalanobisThreshInit_ << "\n" <<
+               "Innovation is: " << innovationSubset << "\n" <<
+               "Innovation covariance is:\n" << innovMatInv << "\n");
       if ( measurement.publishMahalanobisDistance_)
       {
       //  Useful if inspecting a measurement from a particular source. Or on a specific dimension.
@@ -491,8 +495,10 @@ namespace RobotLocalization
     double threshold = nsigmas*nsigmas;
     if (sqMahalanobis >= threshold)
     {
+      FB_DEBUG("Innovation mahalanobis distance test failed.");
       return false;
     }
+    FB_DEBUG("Innovation mahalanobis distance test passed.");
     return true;
   }
 

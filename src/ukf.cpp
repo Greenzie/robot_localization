@@ -266,8 +266,13 @@ namespace RobotLocalization
 
   void Ukf::correct(const Measurement &measurement)
   {
+    std::ostringstream sstream;
+    sstream << std::setprecision(16) << measurement.time_;
+    std::string timeAsString = sstream.str();
     FB_DEBUG("---------------------- Ukf::correct ----------------------\n" <<
              "State is:\n" << state_ <<
+             "\nTopic is:\n" << measurement.topicName_ <<
+             "\nTime is:\n" << timeAsString <<
              "\nMeasurement is:\n" << measurement.measurement_ <<
              "\nMeasurement covariance is:\n" << measurement.covariance_ << "\n");
     
@@ -288,6 +293,10 @@ namespace RobotLocalization
                    kalmanGainSubset, invInnovCov, predictedMeasCovar);
 
     double sqMahalanobis = getSquaredMahalanobisDistance(innovationSubset, invInnovCov);
+    FB_DEBUG("Squared Mahalanobis is: " << sqMahalanobis << "\n" <<
+              "Threshold is: " << measurement.mahalanobisThresh_*measurement.mahalanobisThresh_ << "\n" <<
+              "Innovation is: " << innovationSubset << "\n" <<
+              "Innovation covariance is:\n" << innovMatInv << "\n");
     if ( measurement.publishMahalanobisDistance_)
     {
      //  Useful if inspecting a measurement from a particular source. Or on a specific dimension.
@@ -328,8 +337,12 @@ namespace RobotLocalization
 
   void Ukf::predict(const double referenceTime, const double delta)
   {
+    std::ostringstream sstream;
+    sstream << std::setprecision(16) << referenceTime;
+    std::string timeAsString = sstream.str();
     FB_DEBUG("---------------------- Ukf::predict ----------------------\n" <<
              "delta is " << delta <<
+             "end time is " << timeAsString << "\n" <<
              "\nstate is " << state_ << "\n");
 
     prepareControl(referenceTime, delta);
