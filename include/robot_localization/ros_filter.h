@@ -831,6 +831,8 @@ template<class T> class RosFilter
     ros::Publisher positionPub_;
 
     //! @brief A map of publishers per each odometry topic with the param set for publishing
+    //! the topic names are organized by the data they hold,
+    //! regex example == /odometry_outname/(odom|pose|twist|imu)[0-9]_(pose|twist|acceleration)/squared_mahalanobis_dist
     //!
     std::map<std::string, ros::Publisher> mahalanobisDistancePubMap_;
 
