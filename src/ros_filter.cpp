@@ -2191,7 +2191,6 @@ namespace RobotLocalization
           {
             // Trusted source
             rejectionThreshold = callbackData.rejectionThresholdTrusted_;
-            ROS_INFO("IS USING rejectionThreshold == %f", rejectionThreshold);// FOR TESTING
           }
           if(sourceData_[topicName].bias_valid_)
           {
@@ -2271,8 +2270,6 @@ namespace RobotLocalization
     {
       for(auto &item : sourceData_)
       {
-        ROS_WARN_STREAM("periodicUpdate item.first" << item.first);// FOR TESTING
-
         if((trusted_timeout_ > 0.0) && 
           (item.second.trusted_) &&
           (secCurTime > (item.second.last_trusted_s_ + trusted_timeout_)))
