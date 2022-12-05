@@ -63,6 +63,9 @@ struct Measurement
   // The time stamp of the most recent control term (needed for lagged data)
   double latestControlTime_;
 
+  // Always publish the mahalanobis distance for the particular measurement
+  bool publishMahalanobisDistance_;
+
   // The Mahalanobis distance threshold in number of sigmas
   double mahalanobisThresh_;
 
@@ -385,6 +388,15 @@ class FilterBase
     //!
     void setSaveRejectedMeasurementTopics(bool save);
 
+    //! @brief Returns a copy of the Mahalanobis distance map and clears the member variables data.
+    //!
+    //! @return the latest topic-to-mahalanobis distance map.
+    //!
+    std::map<std::string, double> getCopyAndClearMahalanobisDistanceMap()
+    { 
+      return std::move(measurementMapPeriodicMaxSquaredMahalanobisDistance_);
+    };
+
   protected:
     //! @brief Method for settings bounds on acceleration values derived from controls
     //! @param[in] state - The current state variable (e.g., linear X velocity)
@@ -433,13 +445,18 @@ class FilterBase
     virtual void wrapStateAngles();
 
     //! @brief Tests if innovation is within N-sigmas of covariance. Returns true if passed the test.
-    //! @param[in] innovation - The difference between the measurement and the state
-    //! @param[in] invCovariance - The innovation error
+    //! @param[in] sqMahalanobis - the squared mahalanobis distance
     //! @param[in] nsigmas - Number of standard deviations that are considered acceptable
     //!
-    virtual bool checkMahalanobisThreshold(const Eigen::VectorXd &innovation,
-                                           const Eigen::MatrixXd &invCovariance,
+    virtual bool checkMahalanobisThreshold(const double sqMahalanobis,
                                            const double nsigmas);
+
+    //! @brief calculates mahalanobis distance if in debug mode.
+    //! @param[in] innovation - The difference between the measurement and the state
+    //! @param[in] invCovariance - The innovation error
+    //!
+    virtual double getSquaredMahalanobisDistance(const Eigen::VectorXd &innovation,
+                                             const Eigen::MatrixXd &invCovariance);
 
     //! @brief Converts the control term to an acceleration to be applied in the prediction step
     //! @param[in] referenceTime - The time of the update (measurement used in the prediction step)
@@ -574,6 +591,12 @@ class FilterBase
     //! matrix with respect to each state variable.
     //!
     Eigen::MatrixXd transferFunctionJacobian_;
+
+    //! @brief Holds the last maximum Squared mahalanobis distance per periodic update update/ROS publish
+    //!
+    //! Enables other nodes/nodelets within ROS to track the squared mahalanobis distance per measurement
+    //!
+    std::map<std::string, double> measurementMapPeriodicMaxSquaredMahalanobisDistance_;
 
     //! @brief Holds any rejected measurement topics since the last prediction update/ROS publish
     //!

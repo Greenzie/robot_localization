@@ -292,8 +292,25 @@ namespace RobotLocalization
     prepareCorrect(measurement, updateIndices, innovationSubset, measurementCovarianceSubset,
                    kalmanGainSubset, invInnovCov, predictedMeasCovar);
 
+    double sqMahalanobis = getSquaredMahalanobisDistance(innovationSubset, invInnovCov);
+    FB_DEBUG("Squared Mahalanobis is: " << sqMahalanobis << "\n" <<
+              "Threshold is: " << measurement.mahalanobisThresh_*measurement.mahalanobisThresh_ << "\n" <<
+              "Innovation is: " << innovationSubset << "\n" <<
+              "Innovation covariance is:\n" << invInnovCov << "\n");
+    if ( measurement.publishMahalanobisDistance_)
+    {
+     //  Useful if inspecting a measurement from a particular source. Or on a specific dimension.
+      std::map<std::string, double>& mDistMap = measurementMapPeriodicMaxSquaredMahalanobisDistance_;
+      if(auto search = mDistMap.find(measurement.topicName_); search == mDistMap.end())
+      {
+        mDistMap[measurement.topicName_] = sqMahalanobis;
+      }
+      double &mDistReference = mDistMap.at(measurement.topicName_);
+      // we filter for the max per each periodic update
+      mDistReference = std::max(mDistReference, sqMahalanobis);
+    }
     // (5) Check Mahalanobis distance of innovation
-    if (checkMahalanobisThreshold(innovationSubset, invInnovCov, measurement.mahalanobisThresh_))
+    if (checkMahalanobisThreshold(sqMahalanobis, measurement.mahalanobisThresh_))
     {
       state_.noalias() += kalmanGainSubset * innovationSubset;
 
