@@ -1418,7 +1418,7 @@ namespace RobotLocalization
               ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayPose)));
           
           // Subscribe to trusted data
-          std::vector<std::string> topicNames = {poseTopicName + "_pose"};
+          std::vector<std::string> topicNames = {poseTopicName};
           topicSubs_.push_back(
             nh_.subscribe<std_msgs::Bool>(poseTopic + std::string("/trusted"), poseQueueSize,
               boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
@@ -1529,7 +1529,7 @@ namespace RobotLocalization
               ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayTwist)));
 
           // Subscribe to trusted data
-          std::vector<std::string> topicNames = {twistTopicName + "_twist"};
+          std::vector<std::string> topicNames = {twistTopicName};
           topicSubs_.push_back(
             nh_.subscribe<std_msgs::Bool>(twistTopic + std::string("/trusted"), twistQueueSize,
               boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
