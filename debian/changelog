@@ -1,3 +1,9 @@
+ros-noetic-robot-localization (102.7.3-focal10) focal; urgency=medium
+
+  * use trusted thresholds by populating *TopicName.
+
+ -- Jonathan Sanabria <jonathan@greenzie.com>  Mon, 05 Dec 2022 16:18:57 -0500
+
 ros-noetic-robot-localization (102.7.3-focal9) focal; urgency=medium
 
   * Adding publisher for mahalanobis distance via configuration.
