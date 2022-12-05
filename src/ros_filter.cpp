@@ -660,23 +660,26 @@ namespace RobotLocalization
 
   template<typename T>
   void RosFilter<T>::trustedSensorCallback(const std_msgs::Bool::ConstPtr &msg,
-                                           const std::string &topicName)
+                                           const std::vector<std::string> &topicNames)
   {
-    // RF_VERBOSE provides this info in the debug file inline with the received and
-    //  and processed data, so is highly useful
-    RF_VERBOSE("Received trusted sensor data for topic " << topicName <<
-      " with trusted " << ((msg->data) ? "true\n" : "false\n"));
-    // If this information is to be provided via a ROS stream, do so from the provider
-    // Pass it in/save it all
-    if(sourceData_.find(topicName) == sourceData_.end())
+    for ( auto topicName : topicNames)
     {
-      RF_VERBOSE("Adding trusted sensor source data for topic " << topicName << "\n");
-      // Create it
-      sourceData_.emplace(topicName, SourceData());
+      // RF_VERBOSE provides this info in the debug file inline with the received and
+      //  and processed data, so is highly useful
+      RF_VERBOSE("Received trusted sensor data for topic " << topicName <<
+        " with trusted " << ((msg->data) ? "true\n" : "false\n"));
+      // If this information is to be provided via a ROS stream, do so from the provider
+      // Pass it in/save it all
+      if(sourceData_.find(topicName) == sourceData_.end())
+      {
+        RF_VERBOSE("Adding trusted sensor source data for topic " << topicName << "\n");
+        // Create it
+        sourceData_.emplace(topicName, SourceData());
+      }
+      // Save the data
+      sourceData_[topicName].trusted_ = msg->data;
+      sourceData_[topicName].last_trusted_s_ = ros::Time::now().toSec();
     }
-    // Save the data
-    sourceData_[topicName].trusted_ = msg->data;
-    sourceData_[topicName].last_trusted_s_ = ros::Time::now().toSec();
   }
 
   template<typename T>
@@ -1262,10 +1265,11 @@ namespace RobotLocalization
               ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayOdom)));
           
           // Subscribe to trusted data
+          std::vector<std::string> topicNames = {odomTopicName + "_pose", odomTopicName + "_twist"};
           topicSubs_.push_back(
             nh_.subscribe<std_msgs::Bool>(odomTopic + std::string("/trusted"), odomQueueSize,
               boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
-                odomTopicName), ros::VoidPtr(),
+                topicNames), ros::VoidPtr(),
                 ros::TransportHints().tcpNoDelay(nodelayOdom)));
         }
         else
@@ -1414,10 +1418,11 @@ namespace RobotLocalization
               ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayPose)));
           
           // Subscribe to trusted data
+          std::vector<std::string> topicNames = {poseTopicName + "_pose"};
           topicSubs_.push_back(
             nh_.subscribe<std_msgs::Bool>(poseTopic + std::string("/trusted"), poseQueueSize,
               boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
-                poseTopic), ros::VoidPtr(),
+                topicNames), ros::VoidPtr(),
                 ros::TransportHints().tcpNoDelay(nodelayPose)));
 
           if (differential)
@@ -1524,10 +1529,11 @@ namespace RobotLocalization
               ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayTwist)));
 
           // Subscribe to trusted data
+          std::vector<std::string> topicNames = {twistTopicName + "_twist"};
           topicSubs_.push_back(
             nh_.subscribe<std_msgs::Bool>(twistTopic + std::string("/trusted"), twistQueueSize,
               boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
-                twistTopic), ros::VoidPtr(),
+                topicNames), ros::VoidPtr(),
                 ros::TransportHints().tcpNoDelay(nodelayTwist)));
 
           twistVarCounts[StateMemberVx] += twistUpdateVec[StateMemberVx];
@@ -1753,10 +1759,11 @@ namespace RobotLocalization
                 accelCallbackData), ros::VoidPtr(), ros::TransportHints().tcpNoDelay(nodelayImu)));
 
           // Subscribe to trusted data
+          std::vector<std::string> topicNames = {imuTopicName + "_pose", imuTopicName + "_twist", imuTopicName + "_acceleration"};
           topicSubs_.push_back(
             nh_.subscribe<std_msgs::Bool>(imuTopic + std::string("/trusted"), imuQueueSize,
               boost::bind(&RosFilter<T>::trustedSensorCallback, this, _1,
-                imuTopic), ros::VoidPtr(),
+                topicNames), ros::VoidPtr(),
                 ros::TransportHints().tcpNoDelay(nodelayImu)));
         }
         else
@@ -2184,6 +2191,7 @@ namespace RobotLocalization
           {
             // Trusted source
             rejectionThreshold = callbackData.rejectionThresholdTrusted_;
+            ROS_INFO("IS USING rejectionThreshold == %f", rejectionThreshold);// FOR TESTING
           }
           if(sourceData_[topicName].bias_valid_)
           {
@@ -2263,6 +2271,8 @@ namespace RobotLocalization
     {
       for(auto &item : sourceData_)
       {
+        ROS_WARN_STREAM("periodicUpdate item.first" << item.first);// FOR TESTING
+
         if((trusted_timeout_ > 0.0) && 
           (item.second.trusted_) &&
           (secCurTime > (item.second.last_trusted_s_ + trusted_timeout_)))

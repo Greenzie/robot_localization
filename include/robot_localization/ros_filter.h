@@ -273,11 +273,11 @@ template<class T> class RosFilter
 
     //! @brief Callback method for receiving all trusted sensor data
     //! @param[in] msg - The ROS Bool message to take in.
-    //! @param[in] topicName - The topic name for the sensor data that is trusted/untrusted
+    //! @param[in] topicNames - Topic name(s) for the sensor data that is trusted/untrusted, (odom|pose|twist|imu)[0-9]
     //!
     //! This method receives trusted sensor information for handling rejection thresholds
     //!
-    void trustedSensorCallback(const std_msgs::Bool::ConstPtr &msg, const std::string &topicName);
+    void trustedSensorCallback(const std_msgs::Bool::ConstPtr &msg, const std::vector<std::string> &topicNames);
 
     //! @brief Processes all measurements in the measurement queue, in temporal order
     //!
