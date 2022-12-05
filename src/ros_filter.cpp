@@ -1734,7 +1734,6 @@ namespace RobotLocalization
 
         if (poseUpdateSum + twistUpdateSum + accelUpdateSum > 0)
         {
-          // TODO check publishMahalanobisDistance for IMU odometry source
           const CallbackData poseCallbackData(imuTopicName + "_pose", poseUpdateVec, poseUpdateSum, differential,
             relative, publishMahalanobisDistance, poseMahalanobisThresh, poseMahalanobisThreshInit, poseMahalanobisThreshTrusted);
           const CallbackData twistCallbackData(imuTopicName + "_twist", twistUpdateVec, twistUpdateSum, differential,
