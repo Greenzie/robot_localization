@@ -40,6 +40,7 @@
 
 #include <robot_localization/SetPose.h>
 #include <robot_localization/ToggleFilterProcessing.h>
+#include <robot_localization/ImuBiasValidity.h>
 
 #include <ros/ros.h>
 #include <std_msgs/Float64.h>
@@ -835,6 +836,10 @@ template<class T> class RosFilter
     //! regex example == /odometry_outname/(odom|pose|twist|imu)[0-9]_(pose|twist|acceleration)/squared_mahalanobis_dist
     //!
     std::map<std::string, ros::Publisher> mahalanobisDistancePubMap_;
+
+    //! @brief A map of publishers per each imu topic with the param set for publishing
+    //!
+    std::map<std::string, ros::Publisher> imuDataValidityPubMap_;
 
     //! @brief rejected measurements topics publisher
     //!
