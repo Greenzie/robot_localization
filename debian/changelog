@@ -1,3 +1,57 @@
+ros-noetic-robot-localization (102.7.3-focal11) focal; urgency=medium
+
+  * Adding message for IMU data validity check.
+
+ -- Jonathan Sanabria <jonathan@greenzie.com>  Tue, 27 Dec 2022 11:43:07 -0500
+
+ros-noetic-robot-localization (102.7.3-focal10) focal; urgency=medium
+
+  * use trusted thresholds by populating *TopicName.
+
+ -- Jonathan Sanabria <jonathan@greenzie.com>  Mon, 05 Dec 2022 16:18:57 -0500
+
+ros-noetic-robot-localization (102.7.3-focal9) focal; urgency=medium
+
+  * Adding publisher for mahalanobis distance via configuration.
+
+ -- Jonathan Sanabria <jonathan@greenzie.com>  Mon, 05 Dec 2022 10:18:48 -0500
+
+ros-noetic-robot-localization (102.7.3-focal8) focal; urgency=medium
+
+  * Added trusted inputs and bias handling
+
+ -- Joel <joel@greenzie.com>  Mon, 07 Nov 2022 11:31:36 -0500
+
+ros-noetic-robot-localization (102.7.3-focal7) focal; urgency=medium
+
+  * Improved logic for yaw estimation
+
+ -- Joel <joel@greenzie.com>  Fri, 07 Oct 2022 14:15:50 -0400
+
+ros-noetic-robot-localization (102.7.3-focal6) focal; urgency=medium
+
+  * Added yaw monitoring
+
+ -- Joel <joel@greenzie.com>  Wed, 14 Sep 2022 09:03:49 -0400
+
+ros-noetic-robot-localization (102.7.3-focal5) focal; urgency=medium
+
+  * Improved alpha-beta filter handling of edge cases
+
+ -- Joel <joel@greenzie.com>  Wed, 03 Aug 2022 03:21:53 -0400
+
+ros-noetic-robot-localization (102.7.3-focal4) focal; urgency=medium
+
+  * Added bad data check for initialization
+
+ -- chacalnoir <joel.ph.dunham@gmail.com>  Wed, 25 May 2022 06:38:52 -0400
+
+ros-noetic-robot-localization (102.7.3-focal3) focal; urgency=medium
+
+  * Initialize verbose flag to avoid writing to unopened ostream
+
+ -- daniel <daniel@daniel.greenzievpn>  Fri, 13 May 2022 09:47:33 -0400
+
 ros-noetic-robot-localization (102.7.3-focal2) focal; urgency=medium
 
   * Moved to noetic branch, added output and dynamic orientation correction.

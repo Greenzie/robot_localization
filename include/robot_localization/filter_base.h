@@ -63,8 +63,14 @@ struct Measurement
   // The time stamp of the most recent control term (needed for lagged data)
   double latestControlTime_;
 
+  // Always publish the mahalanobis distance for the particular measurement
+  bool publishMahalanobisDistance_;
+
   // The Mahalanobis distance threshold in number of sigmas
   double mahalanobisThresh_;
+
+  // The Mahalanobis distance threshold for initialization in number of sigmas
+  double mahalanobisThreshInit_;
 
   // The real-valued time, in seconds, since some epoch
   // (presumably the start of execution, but any will do)
@@ -101,6 +107,7 @@ struct Measurement
   Measurement() :
     latestControlTime_(0.0),
     mahalanobisThresh_(std::numeric_limits<double>::max()),
+    mahalanobisThreshInit_(std::numeric_limits<double>::max()),
     time_(0.0),
     topicName_("")
   {
@@ -166,6 +173,28 @@ class FilterBase
     //! @param[in] state - The STATE_SIZE state vector that is used to generate the dynamic process noise covariance
     //!
     void computeDynamicProcessNoiseCovariance(const Eigen::VectorXd &state, const double delta);
+
+    //! @brief Finds the update indices for the given measurement
+    //!
+    //! @param[in] measurement - The measurement for which to get the update indices of the state
+    //! @param[out] updateIndices - The indices of the state to which this measurement applies
+    void getUpdateIndices(const Measurement &measurement, std::vector<size_t> &updateIndices);
+
+    //! @brief Prepares the correction up to the outlier rejection, after which correct() integrates
+    //! the prepared correction
+    //!
+    //! @param[in] measurement - The measurement to prepare to fuse with the state estimate
+    //! @param[in] updateIndices - The indexes of the measurement that will be used to update the state
+    //! @param[out] innovationSubset - The innovation which applies to the subset of the state that matches the measurement
+    //! @param[out] measurementCovarianceSubset - The subset of the covariance that applies to this measurement
+    //! @param[out] kalmanGainSubset - The Kalman gain which applies to the subset of the state that matches the measurement
+    //! @param[out] innovMatInv - Used for computing the Kalman gain and checking the Mahalanobis distance - name more precisely defined in derived classes
+    //! @param[out] auxMat - Auxiliary matrix - name more precisely defined in derived classes
+    //!
+    virtual void prepareCorrect(const Measurement &measurement, const std::vector<size_t> &updateIndices,
+                                Eigen::VectorXd &innovationSubset, Eigen::MatrixXd &measurementCovarianceSubset,
+                                Eigen::MatrixXd &kalmanGainSubset, Eigen::MatrixXd &innovMatInv,
+                                Eigen::MatrixXd &auxMat) = 0;
 
     //! @brief Carries out the correct step in the predict/update cycle. This method
     //! must be implemented by subclasses.
@@ -359,6 +388,15 @@ class FilterBase
     //!
     void setSaveRejectedMeasurementTopics(bool save);
 
+    //! @brief Returns a copy of the Mahalanobis distance map and clears the member variables data.
+    //!
+    //! @return the latest topic-to-mahalanobis distance map.
+    //!
+    std::map<std::string, double> getCopyAndClearMahalanobisDistanceMap()
+    { 
+      return std::move(measurementMapPeriodicMaxSquaredMahalanobisDistance_);
+    };
+
   protected:
     //! @brief Method for settings bounds on acceleration values derived from controls
     //! @param[in] state - The current state variable (e.g., linear X velocity)
@@ -407,13 +445,18 @@ class FilterBase
     virtual void wrapStateAngles();
 
     //! @brief Tests if innovation is within N-sigmas of covariance. Returns true if passed the test.
-    //! @param[in] innovation - The difference between the measurement and the state
-    //! @param[in] invCovariance - The innovation error
+    //! @param[in] sqMahalanobis - the squared mahalanobis distance
     //! @param[in] nsigmas - Number of standard deviations that are considered acceptable
     //!
-    virtual bool checkMahalanobisThreshold(const Eigen::VectorXd &innovation,
-                                           const Eigen::MatrixXd &invCovariance,
+    virtual bool checkMahalanobisThreshold(const double sqMahalanobis,
                                            const double nsigmas);
+
+    //! @brief calculates mahalanobis distance if in debug mode.
+    //! @param[in] innovation - The difference between the measurement and the state
+    //! @param[in] invCovariance - The innovation error
+    //!
+    virtual double getSquaredMahalanobisDistance(const Eigen::VectorXd &innovation,
+                                             const Eigen::MatrixXd &invCovariance);
 
     //! @brief Converts the control term to an acceleration to be applied in the prediction step
     //! @param[in] referenceTime - The time of the update (measurement used in the prediction step)
@@ -548,6 +591,12 @@ class FilterBase
     //! matrix with respect to each state variable.
     //!
     Eigen::MatrixXd transferFunctionJacobian_;
+
+    //! @brief Holds the last maximum Squared mahalanobis distance per periodic update update/ROS publish
+    //!
+    //! Enables other nodes/nodelets within ROS to track the squared mahalanobis distance per measurement
+    //!
+    std::map<std::string, double> measurementMapPeriodicMaxSquaredMahalanobisDistance_;
 
     //! @brief Holds any rejected measurement topics since the last prediction update/ROS publish
     //!

@@ -52,40 +52,14 @@ namespace RobotLocalization
   {
   }
 
-  void Ekf::correct(const Measurement &measurement)
+  void Ekf::prepareCorrect(const Measurement &measurement, const std::vector<size_t> &updateIndices,
+                           Eigen::VectorXd &innovationSubset, Eigen::MatrixXd &measurementCovarianceSubset,
+                           Eigen::MatrixXd &kalmanGainSubset, Eigen::MatrixXd &hphrInv,
+                           Eigen::MatrixXd &stateToMeasurementSubset)
   {
-    FB_DEBUG("---------------------- Ekf::correct ----------------------\n" <<
-             "State is:\n" << state_ << "\n"
-             "Topic is:\n" << measurement.topicName_ << "\n"
-             "Measurement is:\n" << measurement.measurement_ << "\n"
-             "Measurement topic name is:\n" << measurement.topicName_ << "\n\n"
-             "Measurement covariance is:\n" << measurement.covariance_ << "\n");
-
     // We don't want to update everything, so we need to build matrices that only update
     // the measured parts of our state vector. Throughout prediction and correction, we
     // attempt to maximize efficiency in Eigen.
-
-    // First, determine how many state vector values we're updating
-    std::vector<size_t> updateIndices;
-    for (size_t i = 0; i < measurement.updateVector_.size(); ++i)
-    {
-      if (measurement.updateVector_[i])
-      {
-        // Handle nan and inf values in measurements
-        if (std::isnan(measurement.measurement_(i)))
-        {
-          FB_VERBOSE("Value at index " << i << " was nan. Excluding from update.\n");
-        }
-        else if (std::isinf(measurement.measurement_(i)))
-        {
-          FB_VERBOSE("Value at index " << i << " was inf. Excluding from update.\n");
-        }
-        else
-        {
-          updateIndices.push_back(i);
-        }
-      }
-    }
 
     FB_DEBUG("Update indices are:\n" << updateIndices << "\n");
 
@@ -94,17 +68,14 @@ namespace RobotLocalization
     // Now set up the relevant matrices
     Eigen::VectorXd stateSubset(updateSize);                              // x (in most literature)
     Eigen::VectorXd measurementSubset(updateSize);                        // z
-    Eigen::MatrixXd measurementCovarianceSubset(updateSize, updateSize);  // R
-    Eigen::MatrixXd stateToMeasurementSubset(updateSize, state_.rows());  // H
-    Eigen::MatrixXd kalmanGainSubset(state_.rows(), updateSize);          // K
-    Eigen::VectorXd innovationSubset(updateSize);                         // z - Hx
-
     stateSubset.setZero();
     measurementSubset.setZero();
     measurementCovarianceSubset.setZero();
     stateToMeasurementSubset.setZero();
     kalmanGainSubset.setZero();
     innovationSubset.setZero();
+    // Resize since the size may have been unknown generically for the initialization call
+    stateToMeasurementSubset.resize(updateSize, STATE_SIZE);
 
     // Now build the sub-matrices from the full-sized matrices
     for (size_t i = 0; i < updateSize; ++i)
@@ -158,7 +129,7 @@ namespace RobotLocalization
 
     // (1) Compute the Kalman gain: K = (PH') / (HPH' + R)
     Eigen::MatrixXd pht = estimateErrorCovariance_ * stateToMeasurementSubset.transpose();
-    Eigen::MatrixXd hphrInv  = (stateToMeasurementSubset * pht + measurementCovarianceSubset).inverse();
+    hphrInv  = (stateToMeasurementSubset * pht + measurementCovarianceSubset).inverse();
     kalmanGainSubset.noalias() = pht * hphrInv;
 
     innovationSubset = (measurementSubset - stateSubset);
@@ -181,9 +152,56 @@ namespace RobotLocalization
         }
       }
     }
+  }
 
+  void Ekf::correct(const Measurement &measurement)
+  {
+    std::ostringstream sstream;
+    sstream << std::setprecision(16) << measurement.time_;
+    std::string timeAsString = sstream.str();
+    FB_DEBUG("---------------------- Ekf::correct ----------------------\n" <<
+             "State is:\n" << state_ << "\n"
+             "Topic is:\n" << measurement.topicName_ << "\n"
+             "Time is: " << timeAsString << "\n"
+             "Measurement is:\n" << measurement.measurement_ << "\n"
+             "Measurement topic name is:\n" << measurement.topicName_ << "\n\n"
+             "Measurement covariance is:\n" << measurement.covariance_ << "\n");
+
+    // Prepare the correction for integration into the state and covariance
+    std::vector<size_t> updateIndices;
+    getUpdateIndices(measurement, updateIndices);
+    size_t updateSize = updateIndices.size();
+    Eigen::VectorXd innovationSubset(updateSize);                      // z - Hx
+    Eigen::MatrixXd kalmanGainSubset(STATE_SIZE, updateSize);          // K
+    Eigen::MatrixXd stateToMeasurementSubset(updateSize, STATE_SIZE);  // H
+    Eigen::MatrixXd measurementCovarianceSubset(updateSize, updateSize);  // R
+    Eigen::MatrixXd hphrInv;  // TODO - DETERMINE THE SIZE
+    innovationSubset.setZero();
+    kalmanGainSubset.setZero();
+    stateToMeasurementSubset.setZero();
+    measurementCovarianceSubset.setZero();
+    prepareCorrect(measurement, updateIndices, innovationSubset, measurementCovarianceSubset,
+                   kalmanGainSubset, hphrInv, stateToMeasurementSubset);
+
+    double sqMahalanobis = getSquaredMahalanobisDistance(innovationSubset, hphrInv);
+    FB_DEBUG("Squared Mahalanobis is: " << sqMahalanobis << "\n" <<
+              "Threshold is: " << measurement.mahalanobisThresh_*measurement.mahalanobisThresh_ << "\n" <<
+              "Innovation is: " << innovationSubset << "\n" <<
+              "Innovation covariance is:\n" << hphrInv << "\n");
+    if ( measurement.publishMahalanobisDistance_)
+    {
+     //  Useful if inspecting a measurement from a particular source. Or on a specific dimension.
+      std::map<std::string, double>& mDistMap = measurementMapPeriodicMaxSquaredMahalanobisDistance_;
+      if(auto search = mDistMap.find(measurement.topicName_); search == mDistMap.end())
+      {
+        mDistMap[measurement.topicName_] = sqMahalanobis;
+      }
+      double &mDistReference = mDistMap.at(measurement.topicName_);
+      // we filter for the max per each periodic update
+      mDistReference = std::max(mDistReference, sqMahalanobis);
+    }
     // (2) Check Mahalanobis distance between mapped measurement and state.
-    if (checkMahalanobisThreshold(innovationSubset, hphrInv, measurement.mahalanobisThresh_))
+    if (checkMahalanobisThreshold(sqMahalanobis, measurement.mahalanobisThresh_))
     {
       // (3) Apply the gain to the difference between the state and measurement: x = x + K(z - Hx)
       state_.noalias() += kalmanGainSubset * innovationSubset;
@@ -213,8 +231,12 @@ namespace RobotLocalization
 
   void Ekf::predict(const double referenceTime, const double delta)
   {
+    std::ostringstream sstream;
+    sstream << std::setprecision(16) << referenceTime;
+    std::string timeAsString = sstream.str();
     FB_DEBUG("---------------------- Ekf::predict ----------------------\n" <<
              "delta is " << delta << "\n" <<
+             "end time is " << timeAsString << "\n" <<
              "state is " << state_ << "\n");
 
     double roll = state_(StateMemberRoll);
