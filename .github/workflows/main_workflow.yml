@@ -65,8 +65,7 @@ jobs:
           submodules: false
       - name: "Changelogs"
         run: |
-          pwd
-          ls
+          git branch
           greenzie-release changelog -r ${ROS_DISTRO} -os ${UBUNTU_DISTRO}
       - name: "Debianizing"
         run: greenzie-debianize build
