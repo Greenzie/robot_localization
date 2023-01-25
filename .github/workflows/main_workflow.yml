@@ -49,7 +49,9 @@ jobs:
   debianize:
     name: "Debianization"
     timeout-minutes: 30
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - greenzie
     container:
       image: greenzie/debianize:focal-noetic
       credentials:
@@ -64,7 +66,7 @@ jobs:
       - name: "Changelogs"
         run: greenzie-release changelog -r ${ROS_DISTRO} -os ${UBUNTU_DISTRO}
       - name: "Debianizing"
-        run: greenzie-debianize build-depends
+        run: greenzie-debianize all
       - name: Archive Artifacts
         uses: actions/upload-artifact@v3
         with:
