@@ -2,6 +2,20 @@
 Changelog for package robot_localization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Added local cartesian option
+* Updated parameters. Minor style fixes.
+* Moved to noetic branch, added output and dynamic orientation correction.
+* Initialize verbose flag to avoid writing to unopened ostream
+* Added bad data check for initialization
+* Improved alpha-beta filter handling of edge cases
+* Added yaw monitoring
+* Improved logic for yaw estimation
+* Added trusted inputs and bias handling
+* Adding publisher for mahalanobis distance via configuration.
+* Use trusted thresholds by populating 'TopicName'
+
 2.7.3 (2021-07-23)
 ------------------
 * Prevent node from crashing on invalid UTM zone, but throw ROS_ERROR to notify user (`#682 <https://github.com/cra-ros-pkg/robot_localization/issues/682>`_)
