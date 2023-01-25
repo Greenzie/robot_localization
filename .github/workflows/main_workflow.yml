@@ -64,9 +64,7 @@ jobs:
           ref: ${{ github.ref }}
           submodules: false
       - name: "Changelogs"
-        run: |
-          git branch
-          greenzie-release changelog -r ${ROS_DISTRO} -os ${UBUNTU_DISTRO}
+        run: greenzie-release changelog -r ${ROS_DISTRO} -os ${UBUNTU_DISTRO}
       - name: "Debianizing"
         run: greenzie-debianize build
       - name: Archive Artifacts
