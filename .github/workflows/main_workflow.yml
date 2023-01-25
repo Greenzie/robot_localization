@@ -44,7 +44,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: clang-errors-${{ github.run_id }}
-          path: /tmp/*_errors.log
+          path: /tmp/lint/errors/*.log
           retention-days: 3
   debianize:
     name: "Debianization"
@@ -66,7 +66,7 @@ jobs:
       - name: "Changelogs"
         run: greenzie-release changelog -r ${ROS_DISTRO} -os ${UBUNTU_DISTRO}
       - name: "Debianizing"
-        run: greenzie-debianize build
+        run: greenzie-debianize build-depends
       - name: Archive Artifacts
         uses: actions/upload-artifact@v3
         with:
@@ -74,7 +74,7 @@ jobs:
           path: /debians/
           retention-days: 1
   deploy:
-#    if: ${{ github.ref_name == 'noetic' || github.ref_name == 'noetic-devel' }}
+    if: ${{ github.ref_name == 'noetic' || github.ref_name == 'noetic-devel' }}
     name: Aptly Deploy
     needs:
       - lint_test
