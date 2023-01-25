@@ -53,7 +53,7 @@ jobs:
       - self-hosted
       - greenzie
     container:
-      image: greenzie/debianize:noetic-focal
+      image: greenzie/debianize:focal-noetic
       credentials:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_TOKEN }}
