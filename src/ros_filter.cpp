@@ -683,6 +683,31 @@ namespace RobotLocalization
   }
 
   template<typename T>
+  void RosFilter<T>::setMeasurementAsStateCallback(const std_msgs::Bool::ConstPtr &msg,
+                                           const std::vector<std::string> &topicNames)
+  {
+    // FOR TESTING 1
+    for ( auto topicName : topicNames)
+    {
+      // RF_VERBOSE provides this info in the debug file inline with the received and
+      //  and processed data, so is highly useful
+      RF_VERBOSE("Received call to set the available measurements from " << topicName <<
+        " to be used as the state " << ((msg->data) ? "true\n" : "false\n"));
+      // If this information is to be provided via a ROS stream, do so from the provider
+      // Pass it in/save it all
+      if(sourceData_.find(topicName) == sourceData_.end())
+      {
+        RF_VERBOSE("Adding trusted sensor source data for topic " << topicName << "\n");
+        // Create it
+        sourceData_.emplace(topicName, SourceData());
+      }
+      // Save the data
+      sourceData_[topicName].trusted_ = msg->data;
+      sourceData_[topicName].last_trusted_s_ = ros::Time::now().toSec();
+    }
+  }
+
+  template<typename T>
   void RosFilter<T>::integrateMeasurements(const ros::Time &currentTime)
   {
     const double currentTimeSec = currentTime.toSec();
@@ -747,7 +772,13 @@ namespace RobotLocalization
           filter_.setControl(measurement->latestControl_, measurement->latestControlTime_);
           restoredMeasurementCount--;
         }
-
+        // FOR TESTING 2 -- check for if we should be using the measurement as state
+        /*
+        if( measurement.flaggedToBeSetAsState )
+        {
+          filter_.setStateFromMeasurement(*(measurement.get()));
+        }
+        */
         // This will call predict and, if necessary, correct
         filter_.processMeasurement(*(measurement.get()));
 

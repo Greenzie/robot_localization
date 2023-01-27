@@ -280,6 +280,14 @@ template<class T> class RosFilter
     //!
     void trustedSensorCallback(const std_msgs::Bool::ConstPtr &msg, const std::vector<std::string> &topicNames);
 
+    //! @brief Callback method for receiving requests for using the measurement state
+    //! @param[in] msg - The ROS Bool message to take in.
+    //! @param[in] topicNames - Topic name(s) for the sensor data that is to be used as state.
+    //!
+    //! This method receives requests to use the applicable states from a measurement as the filter state
+    //!
+  void setMeasurementAsStateCallback(const std_msgs::Bool::ConstPtr &msg, const std::vector<std::string> &topicNames);
+
     //! @brief Processes all measurements in the measurement queue, in temporal order
     //!
     //! @param[in] currentTime - The time at which to carry out integration (the current time)
