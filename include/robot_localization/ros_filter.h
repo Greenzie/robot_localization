@@ -638,7 +638,7 @@ template<class T> class RosFilter
 
     //! @brief Timeout for how long to use a data source as state, must be >= 0
     //!
-    double set_measurement_as_state_measurement_timeout_s_;
+    double set_measurement_as_state_timeout_s_;
 
     //! @brief What is the acceleration in Z due to gravity (m/s^2)? Default is +9.80665.
     //!

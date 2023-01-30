@@ -685,7 +685,6 @@ namespace RobotLocalization
   template<typename T>
   void RosFilter<T>::setMeasurementAsStateCallback(const std_msgs::String::ConstPtr &msg)
   {
-    // FOR TESTING 1
     // RF_VERBOSE provides this info in the debug file inline with the received and
     //  and processed data, so is highly useful
     RF_VERBOSE("Received call to set the available measurements from " << msg->data << " to be used as the state.");
@@ -757,15 +756,27 @@ namespace RobotLocalization
           filter_.setControl(measurement->latestControl_, measurement->latestControlTime_);
           restoredMeasurementCount--;
         }
-        // FOR TESTING 2 -- check for if we should be using the measurement as state
+        std::vector<std::string> erase_vector;
         for ( auto& request : sourceDataAsStateMap_)
         {
+          bool request_timed_out = set_measurement_as_state_timeout_s_ < (currentTime.toSec()-request.second);
+          if(request_timed_out)
+          {
+            // prevent node from crashing by erasing elements while iterating through them
+            erase_vector.push_back(request.first);
+            continue;
+          }
           if ((measurement->topicName_).find(request.first) != std::string::npos)
           {
             // match found so now we set the state from the measurement
             filter_.setStateFromMeasurement(*(measurement.get()));
           }
         }
+        for ( auto& request_source : erase_vector)
+        {
+          sourceDataAsStateMap_.erase(request_source);
+        }
+
         // This will call predict and, if necessary, correct
         filter_.processMeasurement(*(measurement.get()));
 
@@ -2094,13 +2105,12 @@ namespace RobotLocalization
       filter_.setEstimateErrorCovariance(initialEstimateErrorCovariance);
     }
 
-    // FOR TESTING 0
     // Add callback which allows setting any applicable measurement fields as the new filter state 
     int setMeasurementAsStateQueueSize = 1;
     nhLocal_.param("set_measurement_as_state_queue_size", setMeasurementAsStateQueueSize, 1);
     // get the timeout for the signal which determines whether to use the measurement's fields as the state
-    nhLocal_.param("set_measurement_as_state_timeout_s", set_measurement_as_state_measurement_timeout_s_, 0.0);
-    topicSubs_.push_back( nh_.subscribe<std_msgs::String>("set_measurement_as_state", setMeasurementAsStateQueueSize,
+    nhLocal_.param("set_measurement_as_state_timeout_s", set_measurement_as_state_timeout_s_, 0.0);
+    topicSubs_.push_back( nhLocal_.subscribe<std_msgs::String>("set_measurement_as_state", setMeasurementAsStateQueueSize,
     boost::bind(&RosFilter<T>::setMeasurementAsStateCallback, this, _1), ros::VoidPtr()));
   }
 
