@@ -280,13 +280,12 @@ template<class T> class RosFilter
     //!
     void trustedSensorCallback(const std_msgs::Bool::ConstPtr &msg, const std::vector<std::string> &topicNames);
 
-    //! @brief Callback method for receiving requests for using the measurement state
-    //! @param[in] msg - The ROS Bool message to take in.
-    //! @param[in] topicNames - Topic name(s) for the sensor data that is to be used as state.
+    //! @brief Callback method for receiving a signal to use the measurements as state
+    //! @param[in] msg - The ROS String message which has the data source name (odom|pose|twist|imu)[0-9].
     //!
     //! This method receives requests to use the applicable states from a measurement as the filter state
     //!
-  void setMeasurementAsStateCallback(const std_msgs::Bool::ConstPtr &msg, const std::vector<std::string> &topicNames);
+  void setMeasurementAsStateCallback(const std_msgs::String::ConstPtr &msg);
 
     //! @brief Processes all measurements in the measurement queue, in temporal order
     //!
@@ -637,6 +636,10 @@ template<class T> class RosFilter
     //!
     double bias_timeout_;
 
+    //! @brief Timeout for how long to use a data source as state, must be >= 0
+    //!
+    double set_measurement_as_state_measurement_timeout_s_;
+
     //! @brief What is the acceleration in Z due to gravity (m/s^2)? Default is +9.80665.
     //!
     double gravitationalAcc_;
@@ -750,6 +753,10 @@ template<class T> class RosFilter
     //! @brief Holds information about data sources
     //!
     std::map<std::string, SourceData> sourceData_;
+
+    //! @brief Holds information about data sources to use as the state. key is the data source, val is time of request
+    //!
+    std::map<std::string, double> sourceDataAsStateMap_;
 
     //! @brief The most recent control input
     //!

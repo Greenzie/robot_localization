@@ -683,28 +683,13 @@ namespace RobotLocalization
   }
 
   template<typename T>
-  void RosFilter<T>::setMeasurementAsStateCallback(const std_msgs::Bool::ConstPtr &msg,
-                                           const std::vector<std::string> &topicNames)
+  void RosFilter<T>::setMeasurementAsStateCallback(const std_msgs::String::ConstPtr &msg)
   {
     // FOR TESTING 1
-    for ( auto topicName : topicNames)
-    {
-      // RF_VERBOSE provides this info in the debug file inline with the received and
-      //  and processed data, so is highly useful
-      RF_VERBOSE("Received call to set the available measurements from " << topicName <<
-        " to be used as the state " << ((msg->data) ? "true\n" : "false\n"));
-      // If this information is to be provided via a ROS stream, do so from the provider
-      // Pass it in/save it all
-      if(sourceData_.find(topicName) == sourceData_.end())
-      {
-        RF_VERBOSE("Adding trusted sensor source data for topic " << topicName << "\n");
-        // Create it
-        sourceData_.emplace(topicName, SourceData());
-      }
-      // Save the data
-      sourceData_[topicName].trusted_ = msg->data;
-      sourceData_[topicName].last_trusted_s_ = ros::Time::now().toSec();
-    }
+    // RF_VERBOSE provides this info in the debug file inline with the received and
+    //  and processed data, so is highly useful
+    RF_VERBOSE("Received call to set the available measurements from " << msg->data << " to be used as the state.");
+    sourceDataAsStateMap_[msg->data] = ros::Time::now().toSec();
   }
 
   template<typename T>
@@ -773,12 +758,14 @@ namespace RobotLocalization
           restoredMeasurementCount--;
         }
         // FOR TESTING 2 -- check for if we should be using the measurement as state
-        /*
-        if( measurement.flaggedToBeSetAsState )
+        for ( auto& request : sourceDataAsStateMap_)
         {
-          filter_.setStateFromMeasurement(*(measurement.get()));
+          if ((measurement->topicName_).find(request.first) != std::string::npos)
+          {
+            // match found so now we set the state from the measurement
+            filter_.setStateFromMeasurement(*(measurement.get()));
+          }
         }
-        */
         // This will call predict and, if necessary, correct
         filter_.processMeasurement(*(measurement.get()));
 
@@ -2106,6 +2093,15 @@ namespace RobotLocalization
 
       filter_.setEstimateErrorCovariance(initialEstimateErrorCovariance);
     }
+
+    // FOR TESTING 0
+    // Add callback which allows setting any applicable measurement fields as the new filter state 
+    int setMeasurementAsStateQueueSize = 1;
+    nhLocal_.param("set_measurement_as_state_queue_size", setMeasurementAsStateQueueSize, 1);
+    // get the timeout for the signal which determines whether to use the measurement's fields as the state
+    nhLocal_.param("set_measurement_as_state_timeout_s", set_measurement_as_state_measurement_timeout_s_, 0.0);
+    topicSubs_.push_back( nh_.subscribe<std_msgs::String>("set_measurement_as_state", setMeasurementAsStateQueueSize,
+    boost::bind(&RosFilter<T>::setMeasurementAsStateCallback, this, _1), ros::VoidPtr()));
   }
 
   template<typename T>
