@@ -15,6 +15,7 @@ Forthcoming
 * Added trusted inputs and bias handling
 * Adding publisher for mahalanobis distance via configuration.
 * Use trusted thresholds by populating 'TopicName'
+* Adding Pipeline
 
 2.7.3 (2021-07-23)
 ------------------
