@@ -364,6 +364,12 @@ class FilterBase
     //!
     void setSensorTimeout(const double sensorTimeout);
 
+    //! @brief Manually sets the filter's state using a Measurement's relevant fields
+    //!
+    //! @param[in] state - The relevant measurement fields as the filter's current state
+    //!
+  void setStateFromMeasurement(const Measurement &measurement);
+
     //! @brief Manually sets the filter's state
     //!
     //! @param[in] state - The state to set as the filter's current state

@@ -425,6 +425,20 @@ namespace RobotLocalization
     sensorTimeout_ = sensorTimeout;
   }
 
+  void FilterBase::setStateFromMeasurement(const Measurement &measurement)
+  {
+    std::vector<size_t> updateIndices;
+    // initialize using the most recent state
+    Eigen::VectorXd state(state_);
+    // update state on relevant measurement states
+    getUpdateIndices(measurement, updateIndices);
+    for (int i : updateIndices)
+    {
+      state(i) = measurement.measurement_(i);
+    }
+    setState(state);
+  }
+
   void FilterBase::setState(const Eigen::VectorXd &state)
   {
     state_ = state;
