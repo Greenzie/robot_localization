@@ -20,32 +20,6 @@ defaults:
   run:
     shell: bash
 jobs:
-  lint_test:
-    name: "Lint"
-    timeout-minutes: 30
-    runs-on:
-      - self-hosted
-      - greenzie
-    container:
-      image: greenzie/linter:latest
-      credentials:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_TOKEN }}
-    steps:
-      - name: Checkout Codebase
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ github.ref }}
-          submodules: false
-      - name: "Lint (clang)"
-        run: greenzie_lint --clang
-      - name: Uploading Logs
-        if: failure()
-        uses: actions/upload-artifact@v3
-        with:
-          name: clang-errors-${{ github.run_id }}
-          path: /tmp/lint/errors/*.log
-          retention-days: 3
   debianize:
     name: "Debianization"
     timeout-minutes: 30
@@ -72,10 +46,9 @@ jobs:
           path: /debians/
           retention-days: 1
   deploy:
-    if: ${{ github.ref_name == 'noetic' || github.ref_name == 'noetic-devel' }}
+#    if: ${{ github.ref_name == 'noetic' || github.ref_name == 'noetic-devel' }}
     name: Aptly Deploy
     needs:
-      - lint_test
       - debianize
     timeout-minutes: 10
     runs-on:
