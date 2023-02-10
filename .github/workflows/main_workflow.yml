@@ -36,7 +36,7 @@ jobs:
           ref: ${{ github.ref }}
           submodules: false
       - name: "Changelogs"
-        run: greenzie-release changelog -r ${ROS_DISTRO} -os ${DISTRO}
+        run: greenzie-release changelog -r "${ROS_DISTRO}"
       - name: "Debianizing"
         run: greenzie-debianize all
       - name: Archive Artifacts
@@ -73,13 +73,14 @@ jobs:
       - name: Deploy Debians
         working-directory: /debians
         run: |
-          if [ -n "${{ inputs.repository }}" ] && [ "${{ github.ref_name }}" == "noetic" ]; then
-            aptly repo deploy --repo "${{ inputs.repository }}"
-          elif [ "${{ github.ref_name }}" == "noetic" ]; then
-            aptly repo deploy --repo rc
-          elif [ "${{ github.ref_name }}" == "noetic-devel" ]; then
-            aptly repo deploy --repo experimental
-          else
-            aptly repo deploy --repo dependency
-          fi
+          aptly repo deploy --repo test
+#          if [ -n "${{ inputs.repository }}" ] && [ "${{ github.ref_name }}" == "noetic" ]; then
+#            aptly repo deploy --repo "${{ inputs.repository }}"
+#          elif [ "${{ github.ref_name }}" == "noetic" ]; then
+#            aptly repo deploy --repo rc
+#          elif [ "${{ github.ref_name }}" == "noetic-devel" ]; then
+#            aptly repo deploy --repo experimental
+#          else
+#            aptly repo deploy --repo dependency
+#          fi
 
