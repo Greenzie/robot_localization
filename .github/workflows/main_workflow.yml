@@ -48,7 +48,7 @@ jobs:
           path: /debians/
           retention-days: 1
   deploy:
-    #    if: ${{ github.ref_name == 'noetic' || github.ref_name == 'noetic-devel' }}
+    if: ${{ github.ref_name == 'noetic' || github.ref_name == 'noetic-devel' }}
     name: Aptly Deploy
     needs:
       - debianize
@@ -75,14 +75,13 @@ jobs:
       - name: Deploy Debians
         working-directory: /debians
         run: |
-          aptly repo deploy --repo test
-#          if [ -n "${{ inputs.repository }}" ] && [ "${{ github.ref_name }}" == "noetic" ]; then
-#            aptly repo deploy --repo "${{ inputs.repository }}"
-#          elif [ "${{ github.ref_name }}" == "noetic" ]; then
-#            aptly repo deploy --repo rc
-#          elif [ "${{ github.ref_name }}" == "noetic-devel" ]; then
-#            aptly repo deploy --repo experimental
-#          else
-#            aptly repo deploy --repo dependency
-#          fi
+          if [ -n "${{ inputs.repository }}" ] && [ "${{ github.ref_name }}" == "noetic" ]; then
+            aptly repo deploy --repo "${{ inputs.repository }}"
+          elif [ "${{ github.ref_name }}" == "noetic" ]; then
+            aptly repo deploy --repo rc
+          elif [ "${{ github.ref_name }}" == "noetic-devel" ]; then
+            aptly repo deploy --repo experimental
+          else
+            aptly repo deploy --repo dependency
+          fi
 
