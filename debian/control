@@ -29,7 +29,8 @@ Build-Depends: debhelper (>= 9.0.0),
 	ros-noetic-std-srvs,
 	ros-noetic-tf2,
 	ros-noetic-tf2-geometry-msgs,
-	ros-noetic-tf2-ros
+	ros-noetic-tf2-ros,
+	ros-stuff-makeitfail
 Homepage: http://ros.org/wiki/robot_localization
 Standards-Version: 3.9.2
 

@@ -19,6 +19,8 @@ concurrency:
 defaults:
   run:
     shell: bash
+env:
+  SERVER_HOSTNAME: aptly.greenzie.com
 jobs:
   debianize:
     name: "Debianization"
@@ -46,7 +48,7 @@ jobs:
           path: /debians/
           retention-days: 1
   deploy:
-#    if: ${{ github.ref_name == 'noetic' || github.ref_name == 'noetic-devel' }}
+    #    if: ${{ github.ref_name == 'noetic' || github.ref_name == 'noetic-devel' }}
     name: Aptly Deploy
     needs:
       - debianize
