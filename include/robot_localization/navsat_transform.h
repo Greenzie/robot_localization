@@ -157,6 +157,11 @@ class NavSatTransform
     //!
     void mapToLL(const tf2::Vector3& point, double& latitude, double& longitude, double& altitude) const;
 
+    //! @brief Transforms the passed in point from map frame to lat/long
+    //! @param[in] point the point in map frame to use to transform
+    //!
+    bool isReadyForGnssTransformOrigin(const tf2::Vector3& point, double& latitude, double& longitude, double& altitude) const;
+
     //! @brief Whether or not we broadcast the cartesian transform
     //!
     bool broadcast_cartesian_transform_;
@@ -223,6 +228,22 @@ class NavSatTransform
     //! If this parameter is true, we always report 0 for the altitude of the converted GPS odometry message.
     //!
     bool zero_altitude_;
+
+    //! @brief Parameter that specifies the magnetic declination for the robot's environment.
+    //!
+    int origin_measurement_delay_;
+
+    //! @brief Parameter that specifies the magnetic declination for the robot's environment.
+    //!
+    int origin_measurement_qty_to_avg_;
+
+    //! @brief Member that counts how many gps measurements are currently included to calulate the origin
+    //!
+    int current_good_gps_count_;
+
+    //! @brief Member that counts how many ignored gps measurements before we begin calulating the origin
+    //!
+    int current_delayed_gps_count_;
 
     //! @brief Parameter that specifies the magnetic declination for the robot's environment.
     //!

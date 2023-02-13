@@ -90,6 +90,8 @@ namespace RobotLocalization
     nh_priv.param("use_local_cartesian", use_local_cartesian_, false);
     nh_priv.param("frequency", frequency, 10.0);
     nh_priv.param("delay", delay, 0.0);
+    nh_priv.param("origin_measurement_delay", origin_measurement_delay_, 0);
+    nh_priv.param("origin_measurement_qty_to_avg", origin_measurement_qty_to_avg_, 1);
     nh_priv.param("transform_timeout", transform_timeout, 0.0);
     nh_priv.param("cartesian_frame_id", cartesian_frame_id_, std::string(use_local_cartesian_ ? "local_enu" : "utm"));
     transform_timeout_.fromSec(transform_timeout);
@@ -626,6 +628,19 @@ namespace RobotLocalization
 
     if (good_gps)
     {
+      if(origin_measurement_delay_ < ++current_delayed_gps_count_)
+      {
+        return;
+      }
+      // TODO update average
+      //
+      if (origin_measurement_qty_to_avg_ < ++current_good_gps_count_ )
+      {
+        return;
+      }
+      // we now have enough good gps measurements to calculate the origin
+      sensor_msgs::NavSatFixConstPtr 
+
       // If we haven't computed the transform yet, then
       // store this message as the initial GPS data to use
       if (!transform_good_ && !use_manual_datum_)
@@ -671,6 +686,13 @@ namespace RobotLocalization
 
       gps_update_time_ = msg->header.stamp;
       gps_updated_ = true;
+    }
+    else if (!has_transform_gps_)
+    {
+      // resets origin used by geographic lib
+      // do not reset these variables after has_transform_gps_==true to avoid changing downstream gps/odometry solutions 
+      current_good_gps_count_ = 0;
+      current_delayed_gps_count_ = 0;
     }
   }
 
