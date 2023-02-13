@@ -57,6 +57,7 @@
 #include <GeographicLib/UTMUPS.hpp>
 
 #include <string>
+#include <numeric>
 
 namespace RobotLocalization
 {
@@ -156,11 +157,6 @@ class NavSatTransform
     //! @param[in] point the point in map frame to use to transform
     //!
     void mapToLL(const tf2::Vector3& point, double& latitude, double& longitude, double& altitude) const;
-
-    //! @brief Transforms the passed in point from map frame to lat/long
-    //! @param[in] point the point in map frame to use to transform
-    //!
-    bool isReadyForGnssTransformOrigin(const tf2::Vector3& point, double& latitude, double& longitude, double& altitude) const;
 
     //! @brief Whether or not we broadcast the cartesian transform
     //!
@@ -292,6 +288,10 @@ class NavSatTransform
     //! This will just match whatever your odometry message has
     //!
     std::string world_frame_id_;
+
+    //! @brief Member which holds the measurements which are averaged for a more stable origin
+    //!
+    std::vector<std::vector<double>> origin_llh_{std::vector<double>(),std::vector<double>(),std::vector<double>()};
 
     //! @brief Covariance for most recent odometry data
     //!

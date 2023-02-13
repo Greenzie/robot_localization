@@ -628,32 +628,52 @@ namespace RobotLocalization
 
     if (good_gps)
     {
-      if(origin_measurement_delay_ < ++current_delayed_gps_count_)
+      sensor_msgs::NavSatFixConstPtr gps_meas;
+      if (transform_good_ || use_manual_datum_)
       {
-        return;
+        gps_meas = msg;
       }
-      // TODO update average
-      //
-      if (origin_measurement_qty_to_avg_ < ++current_good_gps_count_ )
+      else if (!has_transform_gps_)
       {
-        return;
-      }
-      // we now have enough good gps measurements to calculate the origin
-      sensor_msgs::NavSatFixConstPtr 
+        // check for `has_transform_gps_` because we want to set the gps origin once
+        if(++current_delayed_gps_count_ < origin_measurement_delay_)
+        {
+          return;
+        }
 
-      // If we haven't computed the transform yet, then
-      // store this message as the initial GPS data to use
-      if (!transform_good_ && !use_manual_datum_)
-      {
-        setTransformGps(msg);
+        origin_llh_[0].push_back(msg->latitude);
+        origin_llh_[1].push_back(msg->longitude);
+        origin_llh_[2].push_back(msg->altitude);
+
+        if (++current_good_gps_count_ < origin_measurement_qty_to_avg_ )
+        {
+          return;
+        }
+        // we now have enough good gps measurements to calculate the origin
+        sensor_msgs::NavSatFix gps_centroid = *msg;
+        double n = origin_llh_[0].size();
+        gps_centroid.latitude = (1.0/n)*std::accumulate(origin_llh_[0].begin(), origin_llh_[0].end(), 0.0);
+        gps_centroid.longitude = (1.0/n)*std::accumulate(origin_llh_[1].begin(), origin_llh_[1].end(), 0.0);
+        gps_centroid.altitude = (1.0/n)*std::accumulate(origin_llh_[2].begin(), origin_llh_[2].end(), 0.0);
+        gps_meas = boost::make_shared<sensor_msgs::NavSatFix>(gps_centroid);
+        // If we haven't computed the transform yet, then
+        // store this message as the initial GPS data to use
+        // first if already tells us -- !transform_good_ && !use_manual_datum_
+        setTransformGps(gps_meas);
       }
+      else
+      {
+        // !transform_good_ and has_transform_gps_
+        return;
+      }
+
 
       double cartesian_x = 0.0;
       double cartesian_y = 0.0;
       double cartesian_z = 0.0;
       if (use_local_cartesian_)
       {
-        gps_local_cartesian_.Forward(msg->latitude, msg->longitude, msg->altitude,
+        gps_local_cartesian_.Forward(gps_meas->latitude, gps_meas->longitude, gps_meas->altitude,
                                      cartesian_x, cartesian_y, cartesian_z);
       }
       else
@@ -663,7 +683,7 @@ namespace RobotLocalization
         bool northp_tmp;
         try
         {
-          GeographicLib::UTMUPS::Forward(msg->latitude, msg->longitude,
+          GeographicLib::UTMUPS::Forward(gps_meas->latitude, gps_meas->longitude,
                                         zone_tmp, northp_tmp, cartesian_x, cartesian_y, utm_zone_);
         }
         catch (const GeographicLib::GeographicErr& e)
@@ -672,7 +692,7 @@ namespace RobotLocalization
           return;
         }
       }
-      latest_cartesian_pose_.setOrigin(tf2::Vector3(cartesian_x, cartesian_y, msg->altitude));
+      latest_cartesian_pose_.setOrigin(tf2::Vector3(cartesian_x, cartesian_y, gps_meas->altitude));
       latest_cartesian_covariance_.setZero();
 
       // Copy the measurement's covariance matrix so that we can rotate it later
@@ -680,11 +700,11 @@ namespace RobotLocalization
       {
         for (size_t j = 0; j < POSITION_SIZE; j++)
         {
-          latest_cartesian_covariance_(i, j) = msg->position_covariance[POSITION_SIZE * i + j];
+          latest_cartesian_covariance_(i, j) = gps_meas->position_covariance[POSITION_SIZE * i + j];
         }
       }
 
-      gps_update_time_ = msg->header.stamp;
+      gps_update_time_ = gps_meas->header.stamp;
       gps_updated_ = true;
     }
     else if (!has_transform_gps_)
@@ -693,6 +713,9 @@ namespace RobotLocalization
       // do not reset these variables after has_transform_gps_==true to avoid changing downstream gps/odometry solutions 
       current_good_gps_count_ = 0;
       current_delayed_gps_count_ = 0;
+      origin_llh_[0].clear();
+      origin_llh_[1].clear();
+      origin_llh_[2].clear();
     }
   }
 
