@@ -225,19 +225,19 @@ class NavSatTransform
     //!
     bool zero_altitude_;
 
-    //! @brief Parameter that specifies the magnetic declination for the robot's environment.
+    //! @brief Parameter that specifies the quantity of measurements to ignore before defining gps transform origin.
     //!
     int origin_measurement_delay_;
 
-    //! @brief Parameter that specifies the magnetic declination for the robot's environment.
+    //! @brief Parameter that specifies the quantity of measurements which are averaged to define gps transform origin.
     //!
     int origin_measurement_qty_to_avg_;
 
-    //! @brief Member that counts how many gps measurements are currently included to calulate the origin
+    //! @brief Member that counts how many gps measurements are currently included to calculate the origin
     //!
     int current_good_gps_count_;
 
-    //! @brief Member that counts how many ignored gps measurements before we begin calulating the origin
+    //! @brief Member that counts how many ignored gps measurements before we begin calculating the origin
     //!
     int current_delayed_gps_count_;
 
