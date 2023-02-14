@@ -649,6 +649,8 @@ namespace RobotLocalization
         {
           return;
         }
+                ROS_INFO_STREAM("ABC - Is getting avg "); // FOR TESTING
+
         // we now have enough good gps measurements to calculate the origin
         sensor_msgs::NavSatFix gps_centroid = *msg;
         double n = origin_llh_[0].size();
@@ -666,6 +668,7 @@ namespace RobotLocalization
         // !transform_good_ and has_transform_gps_
         return;
       }
+                ROS_INFO_STREAM("ABC - Is using msg "); // FOR TESTING
 
 
       double cartesian_x = 0.0;
@@ -673,6 +676,8 @@ namespace RobotLocalization
       double cartesian_z = 0.0;
       if (use_local_cartesian_)
       {
+                        ROS_INFO_STREAM("ABC - Is using local cartesian forward "); // FOR TESTING
+
         gps_local_cartesian_.Forward(gps_meas->latitude, gps_meas->longitude, gps_meas->altitude,
                                      cartesian_x, cartesian_y, cartesian_z);
       }
