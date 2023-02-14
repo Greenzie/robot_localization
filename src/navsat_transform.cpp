@@ -649,7 +649,6 @@ namespace RobotLocalization
         {
           return;
         }
-                ROS_INFO_STREAM("ABC - Is getting avg "); // FOR TESTING
 
         // we now have enough good gps measurements to calculate the origin
         sensor_msgs::NavSatFix gps_centroid = *msg;
@@ -668,7 +667,6 @@ namespace RobotLocalization
         // !transform_good_ and has_transform_gps_
         return;
       }
-                ROS_INFO_STREAM("ABC - Is using msg "); // FOR TESTING
 
 
       double cartesian_x = 0.0;
