@@ -665,6 +665,7 @@ namespace RobotLocalization
       else
       {
         // !transform_good_ and has_transform_gps_
+        ROS_WARN_STREAM("Missing transform_good_ yet has_transform_gps_.");
         return;
       }
 
@@ -710,8 +711,8 @@ namespace RobotLocalization
     }
     else if (!has_transform_gps_)
     {
-      //ROS_WARN_STREAM("GNSS data used for origin is being reset due to a bad GNSS measurement. " <<
-      //                "Had " << current_good_gps_count_<<" good GNSS measurements before reset.");
+      ROS_WARN_STREAM("GNSS data used for origin is being reset due to a bad GNSS measurement. " <<
+                      "Had " << current_good_gps_count_<<" good GNSS measurements before reset.");
       // gps not good so we reset data used for origin used by geographic lib
       // check for has_transform_gps_ so we do not reset these variables after has_transform_gps_==true
       // - to avoid changing downstream gps/odometry solutions 
