@@ -631,8 +631,8 @@ namespace RobotLocalization
       sensor_msgs::NavSatFixConstPtr gps_meas;
       if (transform_good_ || use_manual_datum_)
       {
-        ROS_INFO_STREAM_ONCE("Begun using GPS fix data for cartesian coordinates.");
-        gps_meas = msg;
+        //ROS_INFO_STREAM_ONCE("Begun using GPS fix data for cartesian coordinates.");
+        gps_meas = boost::make_shared<sensor_msgs::NavSatFix>(*msg);
       }
       else if (!has_transform_gps_)
       {
@@ -710,8 +710,8 @@ namespace RobotLocalization
     }
     else if (!has_transform_gps_)
     {
-      ROS_WARN_STREAM("GNSS data used for origin is being reset due to a bad GNSS measurement. " <<
-                      "Had " << current_good_gps_count_<<" good GNSS measurements before reset.");
+      //ROS_WARN_STREAM("GNSS data used for origin is being reset due to a bad GNSS measurement. " <<
+      //                "Had " << current_good_gps_count_<<" good GNSS measurements before reset.");
       // gps not good so we reset data used for origin used by geographic lib
       // check for has_transform_gps_ so we do not reset these variables after has_transform_gps_==true
       // - to avoid changing downstream gps/odometry solutions 
