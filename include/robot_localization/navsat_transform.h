@@ -57,6 +57,7 @@
 #include <GeographicLib/UTMUPS.hpp>
 
 #include <string>
+#include <numeric>
 
 namespace RobotLocalization
 {
@@ -224,6 +225,22 @@ class NavSatTransform
     //!
     bool zero_altitude_;
 
+    //! @brief Parameter that specifies the quantity of measurements to ignore before defining gps transform origin.
+    //!
+    int origin_measurement_delay_;
+
+    //! @brief Parameter that specifies the quantity of measurements which are averaged to define gps transform origin.
+    //!
+    int origin_measurement_qty_to_avg_;
+
+    //! @brief Member that counts how many gps measurements are currently included to calculate the origin
+    //!
+    int current_good_gps_count_;
+
+    //! @brief Member that counts how many ignored gps measurements before we begin calculating the origin
+    //!
+    int current_delayed_gps_count_;
+
     //! @brief Parameter that specifies the magnetic declination for the robot's environment.
     //!
     double magnetic_declination_;
@@ -271,6 +288,10 @@ class NavSatTransform
     //! This will just match whatever your odometry message has
     //!
     std::string world_frame_id_;
+
+    //! @brief Member which holds the measurements which are averaged for a more stable origin
+    //!
+    std::vector<std::vector<double>> origin_llh_{std::vector<double>(),std::vector<double>(),std::vector<double>()};
 
     //! @brief Covariance for most recent odometry data
     //!
