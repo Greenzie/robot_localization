@@ -631,7 +631,7 @@ namespace RobotLocalization
       sensor_msgs::NavSatFixConstPtr gps_meas;
       if (transform_good_ || use_manual_datum_)
       {
-        //ROS_INFO_STREAM_ONCE("Begun using GPS fix data for cartesian coordinates.");
+        ROS_INFO_STREAM_ONCE("Begun using GPS fix data for cartesian coordinates.");
         gps_meas = boost::make_shared<sensor_msgs::NavSatFix>(*msg);
       }
       else if (!has_transform_gps_)
