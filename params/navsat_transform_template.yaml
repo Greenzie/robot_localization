@@ -5,6 +5,14 @@ frequency: 30
 # important if you have use_odometry_yaw set to true. Defaults to 0.
 delay: 3.0
 
+# Delay, in measurements, before we calculate the origin of the local GNSS cartesian. This is especially
+# important if you want to filter erroneous data while a GNSS receiver first starts determining location. Defaults to 0.
+origin_measurement_delay: 5
+
+# Quantity, in measurements, of GNSS measurements to use when averaging to make a more stable origin. This is especially
+# important if you want to filter erroneous data while a GNSS receiver first starts determining location. Defaults to 1.
+origin_measurement_qty_to_avg: 15
+
 # PLEASE READ: Like all nodes in robot_localization, this node assumes that your IMU data is reported in the ENU frame.
 # Many IMUs report data in the NED frame, so you'll want to verify that your data is in the correct frame before using
 # it. 
@@ -45,4 +53,3 @@ wait_for_datum: false
 # origin (datum) using this parameter. The fields in the parameter represent latitude and longitude in decimal degrees,
 # and heading in radians. As navsat_transform_node assumes an ENU standard, a 0 heading corresponds to east.
 datum: [55.944904, -3.186693, 0.0]
-
