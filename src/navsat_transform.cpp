@@ -628,11 +628,11 @@ namespace RobotLocalization
 
     if (good_gps)
     {
-      sensor_msgs::NavSatFixConstPtr gps_meas;
+      sensor_msgs::NavSatFix gps_meas;
       if (transform_good_ || use_manual_datum_)
       {
         ROS_INFO_STREAM_ONCE("Begun using GPS fix data for cartesian coordinates.");
-        gps_meas = boost::make_shared<sensor_msgs::NavSatFix>(*msg);
+        gps_meas = *msg;
       }
       else if (!has_transform_gps_)
       {
@@ -656,11 +656,11 @@ namespace RobotLocalization
         gps_centroid.latitude = (1.0/n)*std::accumulate(origin_llh_[0].begin(), origin_llh_[0].end(), 0.0);
         gps_centroid.longitude = (1.0/n)*std::accumulate(origin_llh_[1].begin(), origin_llh_[1].end(), 0.0);
         gps_centroid.altitude = (1.0/n)*std::accumulate(origin_llh_[2].begin(), origin_llh_[2].end(), 0.0);
-        gps_meas = boost::make_shared<sensor_msgs::NavSatFix>(gps_centroid);
+        gps_meas = gps_centroid;
         // If we haven't computed the transform yet, then
         // store this message as the initial GPS data to use
         // first if already tells us -- !transform_good_ && !use_manual_datum_
-        setTransformGps(gps_meas);
+        setTransformGps(boost::make_shared<sensor_msgs::NavSatFix>(gps_meas));
       }
       else
       {
@@ -675,7 +675,7 @@ namespace RobotLocalization
       double cartesian_z = 0.0;
       if (use_local_cartesian_)
       {
-        gps_local_cartesian_.Forward(gps_meas->latitude, gps_meas->longitude, gps_meas->altitude,
+        gps_local_cartesian_.Forward(gps_meas.latitude, gps_meas.longitude, gps_meas.altitude,
                                      cartesian_x, cartesian_y, cartesian_z);
       }
       else
@@ -685,7 +685,7 @@ namespace RobotLocalization
         bool northp_tmp;
         try
         {
-          GeographicLib::UTMUPS::Forward(gps_meas->latitude, gps_meas->longitude,
+          GeographicLib::UTMUPS::Forward(gps_meas.latitude, gps_meas.longitude,
                                         zone_tmp, northp_tmp, cartesian_x, cartesian_y, utm_zone_);
         }
         catch (const GeographicLib::GeographicErr& e)
@@ -694,7 +694,7 @@ namespace RobotLocalization
           return;
         }
       }
-      latest_cartesian_pose_.setOrigin(tf2::Vector3(cartesian_x, cartesian_y, gps_meas->altitude));
+      latest_cartesian_pose_.setOrigin(tf2::Vector3(cartesian_x, cartesian_y, gps_meas.altitude));
       latest_cartesian_covariance_.setZero();
 
       // Copy the measurement's covariance matrix so that we can rotate it later
@@ -702,11 +702,11 @@ namespace RobotLocalization
       {
         for (size_t j = 0; j < POSITION_SIZE; j++)
         {
-          latest_cartesian_covariance_(i, j) = gps_meas->position_covariance[POSITION_SIZE * i + j];
+          latest_cartesian_covariance_(i, j) = gps_meas.position_covariance[POSITION_SIZE * i + j];
         }
       }
 
-      gps_update_time_ = gps_meas->header.stamp;
+      gps_update_time_ = gps_meas.header.stamp;
       gps_updated_ = true;
     }
     else if (!has_transform_gps_)
