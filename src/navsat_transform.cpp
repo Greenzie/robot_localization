@@ -205,6 +205,9 @@ namespace RobotLocalization
 //  void NavSatTransform::run()
   void NavSatTransform::periodicUpdate(const ros::TimerEvent& event)
   {
+                  ROS_INFO_STREAM("transform_good_ " << transform_good_<<" has_transform_[odom&&imu]_ " << (has_transform_odom_&& has_transform_imu_)<< " has_transform_gps_ " << has_transform_gps_ <<" current_good_gps_count_ "<< current_good_gps_count_
+ << " current_delayed_gps_count_ "<< current_delayed_gps_count_ );
+
     if (!transform_good_)
     {
       computeTransform();
@@ -716,8 +719,8 @@ namespace RobotLocalization
       // gps not good so we reset data used for origin used by geographic lib
       // check for has_transform_gps_ so we do not reset these variables after has_transform_gps_==true
       // - to avoid changing downstream gps/odometry solutions 
-      // FOR TESTING // current_good_gps_count_ = 0;
-      // FOR TESTING // current_delayed_gps_count_ = 0;
+      current_good_gps_count_ = 0;
+      current_delayed_gps_count_ = 0;
       origin_llh_[0].clear();
       origin_llh_[1].clear();
       origin_llh_[2].clear();
