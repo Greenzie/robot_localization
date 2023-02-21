@@ -716,8 +716,8 @@ namespace RobotLocalization
       // gps not good so we reset data used for origin used by geographic lib
       // check for has_transform_gps_ so we do not reset these variables after has_transform_gps_==true
       // - to avoid changing downstream gps/odometry solutions 
-      current_good_gps_count_ = 0;
-      current_delayed_gps_count_ = 0;
+      // FOR TESTING // current_good_gps_count_ = 0;
+      // FOR TESTING // current_delayed_gps_count_ = 0;
       origin_llh_[0].clear();
       origin_llh_[1].clear();
       origin_llh_[2].clear();
