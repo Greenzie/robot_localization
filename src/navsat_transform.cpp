@@ -62,6 +62,8 @@ namespace RobotLocalization
     base_link_frame_id_("base_link"),
     gps_frame_id_(""),
     utm_zone_(0),
+    current_good_gps_count_(0),
+    current_delayed_gps_count_(0),
     world_frame_id_("odom"),
     transform_timeout_(ros::Duration(0)),
     tf_listener_(tf_buffer_)
@@ -205,9 +207,6 @@ namespace RobotLocalization
 //  void NavSatTransform::run()
   void NavSatTransform::periodicUpdate(const ros::TimerEvent& event)
   {
-                  ROS_INFO_STREAM("transform_good_ " << transform_good_<<" has_transform_[odom&&imu]_ " << (has_transform_odom_&& has_transform_imu_)<< " has_transform_gps_ " << has_transform_gps_ <<" current_good_gps_count_ "<< current_good_gps_count_
- << " current_delayed_gps_count_ "<< current_delayed_gps_count_ );
-
     if (!transform_good_)
     {
       computeTransform();
@@ -634,7 +633,7 @@ namespace RobotLocalization
       sensor_msgs::NavSatFix gps_meas;
       if (transform_good_ || use_manual_datum_)
       {
-        // FOR TESTING // ROS_INFO_STREAM_ONCE("Begun using GPS fix data for cartesian coordinates.");
+        ROS_INFO_STREAM_ONCE("Begun using GPS fix data for cartesian coordinates.");
         gps_meas = *msg;
       }
       else if (!has_transform_gps_)
@@ -668,7 +667,7 @@ namespace RobotLocalization
       else
       {
         // !transform_good_ and has_transform_gps_
-        // FOR TESTING // ROS_WARN_STREAM("Missing transform_good_ yet has_transform_gps_.");
+        ROS_WARN_STREAM("Missing transform_good_ yet has_transform_gps_.");
         return;
       }
 
@@ -714,8 +713,8 @@ namespace RobotLocalization
     }
     else if (!has_transform_gps_)
     {
-      // FOR TESTING // ROS_WARN_STREAM("GNSS data used for origin is being reset due to a bad GNSS measurement. " <<
-      // FOR TESTING //                 "Had " << current_good_gps_count_<<" good GNSS measurements before reset.");
+      ROS_WARN_STREAM("GNSS data used for origin is being reset due to a bad GNSS measurement. " <<
+                      "Had " << current_good_gps_count_<<" good GNSS measurements before reset.");
       // gps not good so we reset data used for origin used by geographic lib
       // check for has_transform_gps_ so we do not reset these variables after has_transform_gps_==true
       // - to avoid changing downstream gps/odometry solutions 
