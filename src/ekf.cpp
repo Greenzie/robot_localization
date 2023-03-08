@@ -217,16 +217,16 @@ namespace RobotLocalization
       // Handle wrapping of angles
       wrapStateAngles();
 
-      FB_DEBUG("Kalman gain subset is:\n" << kalmanGainSubset <<
-               "\nInnovation is:\n" << innovationSubset <<
-               "\nCorrected full state is:\n" << state_ <<
-               "\nCorrected full estimate error covariance is:\n" << estimateErrorCovariance_ <<
-               "\n\n---------------------- /Ekf::correct ----------------------\n");
     }
     else if (saveRejectedMeasurementTopics_)
     {
       rejectedMeasurementTopics_.push_back(measurement.topicName_);
     }
+    FB_DEBUG("Kalman gain subset is:\n" << kalmanGainSubset <<
+              "\nInnovation is:\n" << innovationSubset <<
+              "\nCorrected full state is:\n" << state_ <<
+              "\nCorrected full estimate error covariance is:\n" << estimateErrorCovariance_ <<
+              "\n\n---------------------- /Ekf::correct ----------------------\n");
   }
 
   void Ekf::predict(const double referenceTime, const double delta)
@@ -413,3 +413,4 @@ namespace RobotLocalization
   }
 
 }  // namespace RobotLocalization
+
