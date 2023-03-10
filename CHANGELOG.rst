@@ -2,6 +2,10 @@
 Changelog for package robot_localization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Updated the ESTIMATION_AXES definition to prevent the debug build from failing
+
 2.7.3 (2021-07-23)
 ------------------
 * Prevent node from crashing on invalid UTM zone, but throw ROS_ERROR to notify user (`#682 <https://github.com/cra-ros-pkg/robot_localization/issues/682>`_)

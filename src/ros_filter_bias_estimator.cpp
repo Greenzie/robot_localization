@@ -46,7 +46,7 @@ void RosFilterBiasEstimator::reset() {
     mtx_.lock();
     uncorrected_state_received_s_ = 0.0;
     uncorrected_speed_ = 0.0;
-    for(uint8_t counter = 0; counter < ESTIMATION_AXES; counter++)
+    for(uint8_t counter = 0; counter < 3; counter++)
     {
         orientation_offset_has_been_set_[counter] = false;
         orientation_offset_is_updating_[counter] = false;
@@ -84,7 +84,7 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                                                 std::ofstream &debug_stream) {
     mtx_.lock();
     is_valid.clear();  // Clear and start fresh
-    for(uint8_t axis = 0; axis < ESTIMATION_AXES; axis++)
+    for(uint8_t axis = 0; axis < 3; axis++)
     {
         if(estimation_axes_[axis])
         {
