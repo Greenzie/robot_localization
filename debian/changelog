@@ -1,3 +1,10 @@
+ros-noetic-robot-localization (102.7.3-focal12) focal; urgency=medium
+
+  * Moved static integral type definition outside of class to fix debug
+    build issue
+
+ -- Joel <joel@greenzie.com>  Fri, 10 Mar 2023 12:20:52 -0500
+
 ros-noetic-robot-localization (102.7.3-focal11) focal; urgency=medium
 
   * Adding message for IMU data validity check.

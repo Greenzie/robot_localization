@@ -12,10 +12,10 @@
 
 namespace RobotLocalization
 {
+static const int BIAS_ESTIMATOR_ESTIMATION_AXES = 3;
 
 class RosFilterBiasEstimator {
     public:
-        static const int ESTIMATION_AXES = 3;
 
         // Default constructor
         RosFilterBiasEstimator();
@@ -95,13 +95,13 @@ class RosFilterBiasEstimator {
 
         // Parameters setters and getters
         void set_estimation_axes(std::vector<bool> is_estimating) {
-            for(uint8_t axis = 0; axis < std::min(static_cast<int>(is_estimating.size()), ESTIMATION_AXES); axis++)
+            for(uint8_t axis = 0; axis < std::min(static_cast<int>(is_estimating.size()), BIAS_ESTIMATOR_ESTIMATION_AXES); axis++)
             {
                 estimation_axes_[axis] = is_estimating[axis];
             }
         }
         void get_estimation_axes(std::vector<bool> &is_estimating) const {
-            for(uint8_t axis = 0; axis < ESTIMATION_AXES; axis++)
+            for(uint8_t axis = 0; axis < BIAS_ESTIMATOR_ESTIMATION_AXES; axis++)
             {
                 is_estimating.push_back(estimation_axes_[axis]);
             }
@@ -135,7 +135,7 @@ class RosFilterBiasEstimator {
         std::mutex mtx_;
 
         // Estimation axes
-        bool estimation_axes_[ESTIMATION_AXES] = {false, false, false};
+        bool estimation_axes_[BIAS_ESTIMATOR_ESTIMATION_AXES] = {false, false, false};
 
         // The last orientation estimate and variance in Euler angles received from another estimator
         Eigen::Vector3d uncorrected_orientation_estimate_;
@@ -182,12 +182,12 @@ class RosFilterBiasEstimator {
         bool initial_delay_met_{ false };
 
         // Handling the times for the divergence test to determine whether it is valid
-        int divergence_test_counter_[ESTIMATION_AXES] = {-1, -1, -1};
-        double divergence_test_steps_[ESTIMATION_AXES] = {0, 0, 0};
+        int divergence_test_counter_[BIAS_ESTIMATOR_ESTIMATION_AXES] = {-1, -1, -1};
+        double divergence_test_steps_[BIAS_ESTIMATOR_ESTIMATION_AXES] = {0, 0, 0};
 
         // Whether the orientation offset has been set for future use.
-        bool orientation_offset_has_been_set_[ESTIMATION_AXES] = {false, false, false};
-        bool orientation_offset_is_updating_[ESTIMATION_AXES] = {false, false, false};
+        bool orientation_offset_has_been_set_[BIAS_ESTIMATOR_ESTIMATION_AXES] = {false, false, false};
+        bool orientation_offset_is_updating_[BIAS_ESTIMATOR_ESTIMATION_AXES] = {false, false, false};
 
         // Debugging capabilities
         bool debug_{false};
