@@ -1,3 +1,9 @@
+ros-noetic-robot-localization (102.7.3-focal13) focal; urgency=medium
+
+  * Updated yaw variance estimation
+
+ -- Joel <joel@greenzie.com>  Tue, 28 Mar 2023 16:47:13 -0400
+
 ros-noetic-robot-localization (102.7.3-focal12) focal; urgency=medium
 
   * Moved static integral type definition outside of class to fix debug
