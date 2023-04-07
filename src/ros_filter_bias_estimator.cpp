@@ -41,6 +41,7 @@ RosFilterBiasEstimator::RosFilterBiasEstimator(const RosFilterBiasEstimator& rig
     set_estimation_axes(estimation_axes);
     set_max_num_divergences(right.get_max_num_divergences());
     set_initial_delay(right.get_initial_delay());
+    reset();  // Clear temporary data after the copy
 }
 
 void RosFilterBiasEstimator::reset() {
@@ -122,10 +123,9 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                         if(estimate_differences_.size() == num_values_variance_estimation_)
                         {
                             // Full data - can calculate
-                            double mean = 0.0;  // It is expecting a 0 offset between the two estimates if everything is working well.
                             for(uint16_t counter = 0; counter < estimate_differences_.size(); counter++)
                             {
-                                difference_variance += ::pow(::fabs(estimate_differences_[counter][axis] - mean), 2.0);
+                                difference_variance += ::pow(::fabs(estimate_differences_[counter][axis] - 0.0), 2.0);
                             }
                             difference_variance /= static_cast<double>(num_values_variance_estimation_ - 1);
                         }
@@ -162,8 +162,8 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                         initial_delay_met_ |= ((time_s - start_time_) >= initial_delay_);
 
                         // Calculate the difference between the uncorrected filter estimate and the corrected magnetometer value
-                        double abs_filter_to_mag_difference = ::fabs(uncorrected_orientation_estimate_[axis] -
-                            (orientation_measurement[axis] + orientation_offset_[axis]));
+                        double abs_filter_to_mag_difference = ::fabs(FilterUtilities::clampRotation(uncorrected_orientation_estimate_[axis] -
+                            (orientation_measurement[axis] + orientation_offset_[axis])));
 
                         // Dropped below limit or calculated once with no limit
                         orientation_offset_has_been_set_[axis] |= ((initial_delay_met_) &&
@@ -177,7 +177,8 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                             // The calculation is from max_divergence_ = abs_filter_difference * alpha_^(divergence_test_steps_)
                             // divergence_test_steps_ = ln(max_divergence_ / abs_filter_difference) / ln(alpha_)
                             // Note that max_divergence_ must be < abs_filter_difference since alpha_ < 1.0
-                            double abs_filter_difference = ::fabs(uncorrected_orientation_estimate_[axis] - orientation_estimate[axis]);
+                            double abs_filter_difference =
+                                ::fabs(FilterUtilities::clampRotation(uncorrected_orientation_estimate_[axis] - orientation_estimate[axis]));
                             double max_difference = std::max(abs_filter_difference, abs_filter_to_mag_difference);
                             if((max_divergence_ < max_difference) && (max_divergence_ > 0.0))
                             {
@@ -226,7 +227,8 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
                         // Run the divergence test
                         if(divergence_test_counter_[axis] >= divergence_test_steps_[axis])
                         {
-                            double abs_filter_difference = ::fabs(uncorrected_orientation_estimate_[axis] - orientation_estimate[axis]);
+                            double abs_filter_difference =
+                                ::fabs(FilterUtilities::clampRotation(uncorrected_orientation_estimate_[axis] - orientation_estimate[axis]));
                             if(abs_filter_difference > max_divergence_)
                             {
                                 // Divergence detected - cannot trust this filter's estimate of the orientation
@@ -276,7 +278,7 @@ void RosFilterBiasEstimator::updateBiasEstimate(Eigen::Vector3d &orientation_mea
             }
 
             // Calculate the difference between estimates and place in the vector
-            double filter_difference = uncorrected_orientation_estimate_[axis] - orientation_estimate[axis];
+            double filter_difference = FilterUtilities::clampRotation(uncorrected_orientation_estimate_[axis] - orientation_estimate[axis]);
             if(estimate_differences_.size() <= current_variance_estimation_slot_)
             {
                 Eigen::Vector3d new_diff(0, 0, 0);
