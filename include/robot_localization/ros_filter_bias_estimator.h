@@ -12,10 +12,10 @@
 
 namespace RobotLocalization
 {
+static const int BIAS_ESTIMATOR_ESTIMATION_AXES = 3;
 
 class RosFilterBiasEstimator {
     public:
-        static const int ESTIMATION_AXES = 3;
 
         // Default constructor
         RosFilterBiasEstimator();
@@ -35,9 +35,10 @@ class RosFilterBiasEstimator {
                                const double max_variance,
                                const double alpha,
                                const double max_divergence = -1.0,
-                               const int max_num_divergences = 0,
+                               const int16_t max_num_divergences = 0,
                                const double initial_delay = 0.0,
-                               const bool is_valid = false);
+                               const bool is_valid = false,
+                               const uint16_t num_values_variance_estimation = 30);
     
         RosFilterBiasEstimator(const RosFilterBiasEstimator& right);
 
@@ -95,19 +96,19 @@ class RosFilterBiasEstimator {
 
         // Parameters setters and getters
         void set_estimation_axes(std::vector<bool> is_estimating) {
-            for(uint8_t axis = 0; axis < std::min(static_cast<int>(is_estimating.size()), ESTIMATION_AXES); axis++)
+            for(uint8_t axis = 0; axis < std::min(static_cast<int>(is_estimating.size()), BIAS_ESTIMATOR_ESTIMATION_AXES); axis++)
             {
                 estimation_axes_[axis] = is_estimating[axis];
             }
         }
         void get_estimation_axes(std::vector<bool> &is_estimating) const {
-            for(uint8_t axis = 0; axis < ESTIMATION_AXES; axis++)
+            for(uint8_t axis = 0; axis < BIAS_ESTIMATOR_ESTIMATION_AXES; axis++)
             {
                 is_estimating.push_back(estimation_axes_[axis]);
             }
         }
 
-        void set_max_num_divergences(int max_num) { max_num_divergences_ = max_num; }
+        void set_max_num_divergences(int16_t max_num) { max_num_divergences_ = max_num; }
         int get_max_num_divergences() const { return max_num_divergences_; }
         void set_min_speed(double min_speed) { min_speed_ = min_speed; }
         double get_min_speed() const { return min_speed_; }
@@ -127,6 +128,8 @@ class RosFilterBiasEstimator {
         bool is_using_data() const { return using_data_; }
         void set_initial_delay(double initial_delay) { initial_delay_ = initial_delay; }
         double get_initial_delay() const { return initial_delay_; }
+        void set_num_values_variance_estimate(uint16_t num_values ) { num_values_variance_estimation_ = num_values; }
+        uint16_t get_num_values_variance_estimate() { return num_values_variance_estimation_; }
     private:
         // Time of last state received in seconds
         double uncorrected_state_received_s_{0.0};
@@ -135,7 +138,7 @@ class RosFilterBiasEstimator {
         std::mutex mtx_;
 
         // Estimation axes
-        bool estimation_axes_[ESTIMATION_AXES] = {false, false, false};
+        bool estimation_axes_[BIAS_ESTIMATOR_ESTIMATION_AXES] = {false, false, false};
 
         // The last orientation estimate and variance in Euler angles received from another estimator
         Eigen::Vector3d uncorrected_orientation_estimate_;
@@ -152,7 +155,7 @@ class RosFilterBiasEstimator {
         double min_speed_{0.0};
 
         // Maximum number of divergences before no longer trying to correct. 0 means infinite.
-        int max_num_divergences_{ 0 };
+        int16_t max_num_divergences_{ 0 };
 
         // The maximum variance at which to apply corrections
         double max_orientation_variance_{0.0};
@@ -170,7 +173,7 @@ class RosFilterBiasEstimator {
         bool using_data_{false};
 
         // Whether no longer trying again
-        int num_exceeded_max_divergence_{ 0 };
+        int32_t num_exceeded_max_divergence_{ 0 };
 
         // Initial delay assuming uncorrected KF yaw estimate may be incorrect for a bit
         double initial_delay_{ 0.0 };
@@ -178,16 +181,25 @@ class RosFilterBiasEstimator {
         // For handling the initial delay
         double start_time_{ 0.0 };
 
+        // For estimating the bias variance
+        uint16_t num_values_variance_estimation_{ 30 };
+
+        // Current slot for adding data to the estimation differences vector
+        uint16_t current_variance_estimation_slot_{ 0 };
+
+        // To hold the data for the variance checks
+        std::vector<Eigen::Vector3d> estimate_differences_;
+
         // To avoid constantly checking time differences
         bool initial_delay_met_{ false };
 
         // Handling the times for the divergence test to determine whether it is valid
-        int divergence_test_counter_[ESTIMATION_AXES] = {-1, -1, -1};
-        double divergence_test_steps_[ESTIMATION_AXES] = {0, 0, 0};
+        int32_t divergence_test_counter_[BIAS_ESTIMATOR_ESTIMATION_AXES] = {-1, -1, -1};
+        double divergence_test_steps_[BIAS_ESTIMATOR_ESTIMATION_AXES] = {0, 0, 0};
 
         // Whether the orientation offset has been set for future use.
-        bool orientation_offset_has_been_set_[ESTIMATION_AXES] = {false, false, false};
-        bool orientation_offset_is_updating_[ESTIMATION_AXES] = {false, false, false};
+        bool orientation_offset_has_been_set_[BIAS_ESTIMATOR_ESTIMATION_AXES] = {false, false, false};
+        bool orientation_offset_is_updating_[BIAS_ESTIMATOR_ESTIMATION_AXES] = {false, false, false};
 
         // Debugging capabilities
         bool debug_{false};

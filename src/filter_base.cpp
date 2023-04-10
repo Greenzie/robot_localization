@@ -509,10 +509,10 @@ namespace RobotLocalization
     double threshold = nsigmas*nsigmas;
     if (sqMahalanobis >= threshold)
     {
-      FB_DEBUG("Innovation mahalanobis distance test failed.");
+      FB_DEBUG("Innovation mahalanobis distance test failed.\n");
       return false;
     }
-    FB_DEBUG("Innovation mahalanobis distance test passed.");
+    FB_DEBUG("Innovation mahalanobis distance test passed.\n");
     return true;
   }
 
