@@ -671,6 +671,7 @@ namespace RobotLocalization
     // RF_VERBOSE provides this info in the debug file inline with the received and
     //  and processed data, so is highly useful
     RF_VERBOSE("Received bias estimator reset command for topic " << topicName);
+    ROS_INFO_STREAM("Received bias estimator reset command for topic " << topicName);
     // If this information is to be provided via a ROS stream, do so from the provider
     // Pass it in/save it all
     if(imuDynamicCorrectionData_.find(topicName) != imuDynamicCorrectionData_.end())
