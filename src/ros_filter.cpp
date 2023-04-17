@@ -191,6 +191,12 @@ namespace RobotLocalization
     // reset filter to uninitialized state
     filter_.reset();
 
+    // Reset the yaw bias estimator
+    for(auto & estimators : imuDynamicCorrectionData_)
+    {
+      estimators.second.reset();
+    }
+
     // clear all waiting callbacks
     ros::getGlobalCallbackQueue()->clear();
   }
@@ -655,6 +661,21 @@ namespace RobotLocalization
     if(imuDynamicCorrectionData_.find(topicName) != imuDynamicCorrectionData_.end())
     {
       imuDynamicCorrectionData_[topicName].set_valid(msg->data);
+    }
+  }
+
+  template<typename T>
+  void RosFilter<T>::biasEstimatorResetCallback(const std_msgs::Empty::ConstPtr &msg,
+                                                const std::string &topicName)
+  {
+    // RF_VERBOSE provides this info in the debug file inline with the received and
+    //  and processed data, so is highly useful
+    RF_VERBOSE("Received bias estimator reset command for topic " << topicName);
+    // If this information is to be provided via a ROS stream, do so from the provider
+    // Pass it in/save it all
+    if(imuDynamicCorrectionData_.find(topicName) != imuDynamicCorrectionData_.end())
+    {
+      imuDynamicCorrectionData_[topicName].reset();
     }
   }
 
@@ -1884,6 +1905,13 @@ namespace RobotLocalization
                     dynamic_correction_topic), ros::VoidPtr(),
                     ros::TransportHints().tcpNoDelay(nodelayImu)));
               imuDataValidityPubMap_[dynamic_correction_topic] = nhLocal_.advertise<robot_localization::ImuBiasValidity>(dynamic_correction_topic+"/bias_estimator_validity", 20);
+
+              // Subscribe to resets as well
+              topicSubs_.push_back(
+                nh_.subscribe<std_msgs::Empty>(imuTopic + std::string("/reset_estimator"), imuQueueSize,
+                  boost::bind(&RosFilter<T>::biasEstimatorResetCallback, this, _1,
+                    dynamic_correction_topic), ros::VoidPtr(),
+                    ros::TransportHints().tcpNoDelay(nodelayImu)));
             }
           }
         }
