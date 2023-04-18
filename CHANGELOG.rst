@@ -7,7 +7,7 @@ Forthcoming
 * Updated yaw variance estimation
 * Moved static integral type definition outside of class to fix debug build issue
 * Adding message for IMU data validity check.
-* use trusted thresholds by populating *TopicName.
+* Use trusted thresholds by populating TopicName.
 * Adding publisher for mahalanobis distance via configuration.
 * Added trusted inputs and bias handling
 * Improved logic for yaw estimation
@@ -311,4 +311,3 @@ Forthcoming
 2.1.1 (2014-04-11)
 ------------------
 * Added cmake_modules dependency for Eigen support, and added include to silence boost::signals warning from tf include
-
