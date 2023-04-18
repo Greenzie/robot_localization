@@ -1,3 +1,9 @@
+ros-noetic-robot-localization (102.7.3-focal14) focal; urgency=medium
+
+  * Added reset to bias estimator
+
+ -- Joel <joel@greenzie.com>  Mon, 17 Apr 2023 11:49:37 -0400
+
 ros-noetic-robot-localization (102.7.3-focal13) focal; urgency=medium
 
   * Updated yaw variance estimation

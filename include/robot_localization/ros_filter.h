@@ -272,6 +272,14 @@ template<class T> class RosFilter
     //!
     void imuMagnetometerValidityCallback(const std_msgs::Bool::ConstPtr &msg, const std::string &topicName);
 
+    //! @brief Callback method for bias estimator resets
+    //! @param[in] msg - The ROS EMpty message to take in.
+    //! @param[in] topicName - The topic name for the IMU message that is being dynamically corrected.
+    //!
+    //! This method receives reset commands for dynamically corrected IMU estimator resets
+    //!
+    void biasEstimatorResetCallback(const std_msgs::Empty::ConstPtr &msg, const std::string &topicName);
+
     //! @brief Callback method for receiving all trusted sensor data
     //! @param[in] msg - The ROS Bool message to take in.
     //! @param[in] topicNames - Topic name(s) for the sensor data that is trusted/untrusted, (odom|pose|twist|imu)[0-9]
