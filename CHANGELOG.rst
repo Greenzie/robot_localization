@@ -4,6 +4,7 @@ Changelog for package robot_localization
 
 Forthcoming
 -----------
+* Added reset to bias estimator
 * Updated yaw variance estimation
 * Moved static integral type definition outside of class to fix debug build issue
 * Adding message for IMU data validity check.
