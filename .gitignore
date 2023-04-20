@@ -2,3 +2,6 @@ doc/html
 *.cproject
 *.project
 *.settings
+**/.idea
+**/.templates
+**/changelog
