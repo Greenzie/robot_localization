@@ -2,6 +2,26 @@
 Changelog for package robot_localization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Added reset to bias estimator
+* Updated yaw variance estimation
+* Moved static integral type definition outside of class to fix debug build issue
+* Adding message for IMU data validity check.
+* Use trusted thresholds by populating TopicName.
+* Adding publisher for mahalanobis distance via configuration.
+* Added trusted inputs and bias handling
+* Improved logic for yaw estimation
+* Added yaw monitoring
+* Improved alpha-beta filter handling of edge cases
+* Added bad data check for initialization
+* Initialize verbose flag to avoid writing to unopened ostream
+* Moved to noetic branch, added output and dynamic orientation correction.
+* Updated parameters. Minor style fixes.
+* Added local cartesian option
+* Adding Pipeline
+* Throttling GNSS Origin data warning
+
 2.7.3 (2021-07-23)
 ------------------
 * Prevent node from crashing on invalid UTM zone, but throw ROS_ERROR to notify user (`#682 <https://github.com/cra-ros-pkg/robot_localization/issues/682>`_)
@@ -293,4 +313,3 @@ Changelog for package robot_localization
 2.1.1 (2014-04-11)
 ------------------
 * Added cmake_modules dependency for Eigen support, and added include to silence boost::signals warning from tf include
-
