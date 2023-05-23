@@ -20,6 +20,7 @@ Forthcoming
 * Updated parameters. Minor style fixes.
 * Added local cartesian option
 * Adding Pipeline
+* Throttling GNSS Origin data warning
 
 2.7.3 (2021-07-23)
 ------------------
