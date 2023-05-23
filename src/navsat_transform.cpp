@@ -43,29 +43,30 @@
 
 namespace RobotLocalization
 {
-  NavSatTransform::NavSatTransform(ros::NodeHandle nh, ros::NodeHandle nh_priv) : broadcast_cartesian_transform_(false),
-                                                                                  broadcast_cartesian_transform_as_parent_frame_(false),
-                                                                                  gps_updated_(false),
-                                                                                  has_transform_gps_(false),
-                                                                                  has_transform_imu_(false),
-                                                                                  has_transform_odom_(false),
-                                                                                  odom_updated_(false),
-                                                                                  publish_gps_(false),
-                                                                                  transform_good_(false),
-                                                                                  use_manual_datum_(false),
-                                                                                  use_odometry_yaw_(false),
-                                                                                  use_local_cartesian_(false),
-                                                                                  zero_altitude_(false),
-                                                                                  current_good_gps_count_(0),
-                                                                                  current_delayed_gps_count_(0),
-                                                                                  magnetic_declination_(0.0),
-                                                                                  yaw_offset_(0.0),
-                                                                                  base_link_frame_id_("base_link"),
-                                                                                  gps_frame_id_(""),
-                                                                                  utm_zone_(0),
-                                                                                  world_frame_id_("odom"),
-                                                                                  transform_timeout_(ros::Duration(0)),
-                                                                                  tf_listener_(tf_buffer_)
+  NavSatTransform::NavSatTransform(ros::NodeHandle nh, ros::NodeHandle nh_priv) :
+    broadcast_cartesian_transform_(false),
+    broadcast_cartesian_transform_as_parent_frame_(false),
+    gps_updated_(false),
+    has_transform_gps_(false),
+    has_transform_imu_(false),
+    has_transform_odom_(false),
+    odom_updated_(false),
+    publish_gps_(false),
+    transform_good_(false),
+    use_manual_datum_(false),
+    use_odometry_yaw_(false),
+    use_local_cartesian_(false),
+    zero_altitude_(false),
+    current_good_gps_count_(0),
+    current_delayed_gps_count_(0),
+    magnetic_declination_(0.0),
+    yaw_offset_(0.0),
+    base_link_frame_id_("base_link"),
+    gps_frame_id_(""),
+    utm_zone_(0),
+    world_frame_id_("odom"),
+    transform_timeout_(ros::Duration(0)),
+    tf_listener_(tf_buffer_)
   {
     ROS_INFO("Waiting for valid clock time...");
     ros::Time::waitForValid();
@@ -139,7 +140,7 @@ namespace RobotLocalization
         if (datum_config.size() > 3)
         {
           ROS_WARN_STREAM("Deprecated datum parameter configuration detected. Only the first three parameters "
-                          "(latitude, longitude, yaw) will be used. frame_ids will be derived from odometry and navsat inputs.");
+              "(latitude, longitude, yaw) will be used. frame_ids will be derived from odometry and navsat inputs.");
         }
 
         std::ostringstream ostr;
@@ -171,12 +172,13 @@ namespace RobotLocalization
       }
       catch (XmlRpc::XmlRpcException &e)
       {
-        ROS_ERROR_STREAM("ERROR reading sensor config: " << e.getMessage() << " for process_noise_covariance (type: " << datum_config.getType() << ")");
+        ROS_ERROR_STREAM("ERROR reading sensor config: " << e.getMessage() <<
+                         " for process_noise_covariance (type: " << datum_config.getType() << ")");
       }
     }
 
     odom_sub_ = nh.subscribe("odometry/filtered", 1, &NavSatTransform::odomCallback, this);
-    gps_sub_ = nh.subscribe("gps/fix", 1, &NavSatTransform::gpsFixCallback, this);
+    gps_sub_  = nh.subscribe("gps/fix", 1, &NavSatTransform::gpsFixCallback, this);
 
     if (!use_odometry_yaw_ && !use_manual_datum_)
     {
@@ -195,15 +197,15 @@ namespace RobotLocalization
     ros::Duration start_delay(delay);
     start_delay.sleep();
 
-    periodicUpdateTimer_ = nh.createTimer(ros::Duration(1. / frequency), &NavSatTransform::periodicUpdate, this);
+    periodicUpdateTimer_ = nh.createTimer(ros::Duration(1./frequency), &NavSatTransform::periodicUpdate, this);
   }
 
   NavSatTransform::~NavSatTransform()
   {
   }
 
-  //  void NavSatTransform::run()
-  void NavSatTransform::periodicUpdate(const ros::TimerEvent &event)
+//  void NavSatTransform::run()
+  void NavSatTransform::periodicUpdate(const ros::TimerEvent& event)
   {
     if (!transform_good_)
     {
@@ -287,8 +289,10 @@ namespace RobotLocalization
        */
       imu_yaw += (magnetic_declination_ + yaw_offset_ + utm_meridian_convergence_);
 
-      ROS_INFO_STREAM("Corrected for magnetic declination of " << std::fixed << magnetic_declination_ << ", user-specified offset of " << yaw_offset_ << " and meridian convergence of " << utm_meridian_convergence_ << "."
-                                                               << " Transform heading factor is now " << imu_yaw);
+      ROS_INFO_STREAM("Corrected for magnetic declination of " << std::fixed << magnetic_declination_ <<
+                      ", user-specified offset of " << yaw_offset_ <<
+                      " and meridian convergence of " << utm_meridian_convergence_ << "." <<
+                      " Transform heading factor is now " << imu_yaw);
 
       // Convert to tf-friendly structures
       tf2::Quaternion imu_quat;
@@ -324,17 +328,22 @@ namespace RobotLocalization
       {
         geometry_msgs::TransformStamped cartesian_transform_stamped;
         cartesian_transform_stamped.header.stamp = ros::Time::now();
-        cartesian_transform_stamped.header.frame_id = (broadcast_cartesian_transform_as_parent_frame_ ? cartesian_frame_id_ : world_frame_id_);
-        cartesian_transform_stamped.child_frame_id = (broadcast_cartesian_transform_as_parent_frame_ ? world_frame_id_ : cartesian_frame_id_);
-        cartesian_transform_stamped.transform = (broadcast_cartesian_transform_as_parent_frame_ ? tf2::toMsg(cartesian_world_trans_inverse_) : tf2::toMsg(cartesian_world_transform_));
-        cartesian_transform_stamped.transform.translation.z = (zero_altitude_ ? 0.0 : cartesian_transform_stamped.transform.translation.z);
+        cartesian_transform_stamped.header.frame_id = (broadcast_cartesian_transform_as_parent_frame_ ?
+                                                       cartesian_frame_id_ : world_frame_id_);
+        cartesian_transform_stamped.child_frame_id = (broadcast_cartesian_transform_as_parent_frame_ ?
+                                                      world_frame_id_ : cartesian_frame_id_);
+        cartesian_transform_stamped.transform = (broadcast_cartesian_transform_as_parent_frame_ ?
+                                             tf2::toMsg(cartesian_world_trans_inverse_) :
+                                             tf2::toMsg(cartesian_world_transform_));
+        cartesian_transform_stamped.transform.translation.z = (zero_altitude_ ?
+                                                           0.0 : cartesian_transform_stamped.transform.translation.z);
         cartesian_broadcaster_.sendTransform(cartesian_transform_stamped);
       }
     }
   }
 
-  bool NavSatTransform::datumCallback(robot_localization::SetDatum::Request &request,
-                                      robot_localization::SetDatum::Response &)
+  bool NavSatTransform::datumCallback(robot_localization::SetDatum::Request& request,
+                                      robot_localization::SetDatum::Response&)
   {
     // If we get a service call with a manual datum, even if we already computed the transform using the robot's
     // initial pose, then we want to assume that we are using a datum from now on, and we want other methods to
@@ -377,8 +386,8 @@ namespace RobotLocalization
     return true;
   }
 
-  bool NavSatTransform::toLLCallback(robot_localization::ToLL::Request &request,
-                                     robot_localization::ToLL::Response &response)
+  bool NavSatTransform::toLLCallback(robot_localization::ToLL::Request& request,
+                                     robot_localization::ToLL::Response& response)
   {
     if (!transform_good_)
     {
@@ -392,8 +401,8 @@ namespace RobotLocalization
     return true;
   }
 
-  bool NavSatTransform::fromLLCallback(robot_localization::FromLL::Request &request,
-                                       robot_localization::FromLL::Response &response)
+  bool NavSatTransform::fromLLCallback(robot_localization::FromLL::Request& request,
+                                       robot_localization::FromLL::Response& response)
   {
     double altitude = request.ll_point.altitude;
     double longitude = request.ll_point.longitude;
@@ -417,7 +426,7 @@ namespace RobotLocalization
       {
         GeographicLib::UTMUPS::Forward(latitude, longitude, zone_tmp, nortp_tmp, cartesian_x, cartesian_y, utm_zone_);
       }
-      catch (const GeographicLib::GeographicErr &e)
+      catch (const GeographicLib::GeographicErr& e)
       {
         ROS_ERROR_STREAM_THROTTLE(1.0, e.what());
         return false;
@@ -439,8 +448,8 @@ namespace RobotLocalization
     return true;
   }
 
-  bool NavSatTransform::setUTMZoneCallback(robot_localization::SetUTMZone::Request &request,
-                                           robot_localization::SetUTMZone::Response &response)
+  bool NavSatTransform::setUTMZoneCallback(robot_localization::SetUTMZone::Request& request,
+                                           robot_localization::SetUTMZone::Response& response)
   {
     double x_unused;
     double y_unused;
@@ -450,7 +459,7 @@ namespace RobotLocalization
     return true;
   }
 
-  nav_msgs::Odometry NavSatTransform::cartesianToMap(const tf2::Transform &cartesian_pose) const
+  nav_msgs::Odometry NavSatTransform::cartesianToMap(const tf2::Transform& cartesian_pose) const
   {
     nav_msgs::Odometry gps_odom{};
 
@@ -470,7 +479,7 @@ namespace RobotLocalization
     return gps_odom;
   }
 
-  void NavSatTransform::mapToLL(const tf2::Vector3 &point, double &latitude, double &longitude, double &altitude) const
+  void NavSatTransform::mapToLL(const tf2::Vector3& point, double& latitude, double& longitude, double& altitude) const
   {
     tf2::Transform odom_as_cartesian{};
 
@@ -547,7 +556,8 @@ namespace RobotLocalization
     {
       if (gps_frame_id_ != "")
       {
-        ROS_WARN_STREAM_ONCE("Unable to obtain " << base_link_frame_id_ << "->" << gps_frame_id_ << " transform. Will assume navsat device is mounted at robot's origin");
+        ROS_WARN_STREAM_ONCE("Unable to obtain " << base_link_frame_id_ << "->" << gps_frame_id_ <<
+          " transform. Will assume navsat device is mounted at robot's origin");
       }
 
       robot_cartesian_pose = gps_cartesian_pose;
@@ -591,23 +601,25 @@ namespace RobotLocalization
       }
       else
       {
-        ROS_WARN_STREAM_THROTTLE(5.0, "Could not obtain " << world_frame_id_ << "->" << base_link_frame_id_ << " transform. Will not remove offset of navsat device from robot's origin.");
+        ROS_WARN_STREAM_THROTTLE(5.0, "Could not obtain " << world_frame_id_ << "->" << base_link_frame_id_ <<
+          " transform. Will not remove offset of navsat device from robot's origin.");
       }
     }
     else
     {
-      ROS_WARN_STREAM_THROTTLE(5.0, "Could not obtain " << base_link_frame_id_ << "->" << gps_frame_id_ << " transform. Will not remove offset of navsat device from robot's origin.");
+      ROS_WARN_STREAM_THROTTLE(5.0, "Could not obtain " << base_link_frame_id_ << "->" << gps_frame_id_ <<
+        " transform. Will not remove offset of navsat device from robot's origin.");
     }
   }
 
-  void NavSatTransform::gpsFixCallback(const sensor_msgs::NavSatFixConstPtr &msg)
+  void NavSatTransform::gpsFixCallback(const sensor_msgs::NavSatFixConstPtr& msg)
   {
     gps_frame_id_ = msg->header.frame_id;
 
     if (gps_frame_id_.empty())
     {
       ROS_WARN_STREAM_ONCE("NavSatFix message has empty frame_id. Will assume navsat device is mounted at robot's "
-                           "origin.");
+        "origin.");
     }
 
     // Make sure the GPS data is usable
@@ -627,7 +639,7 @@ namespace RobotLocalization
       else if (!has_transform_gps_)
       {
         // check for `has_transform_gps_` because we want to set the gps origin once
-        if (++current_delayed_gps_count_ < origin_measurement_delay_)
+        if(++current_delayed_gps_count_ < origin_measurement_delay_)
         {
           return;
         }
@@ -636,16 +648,16 @@ namespace RobotLocalization
         origin_llh_[1].push_back(msg->longitude);
         origin_llh_[2].push_back(msg->altitude);
 
-        if (++current_good_gps_count_ < origin_measurement_qty_to_avg_)
+        if (++current_good_gps_count_ < origin_measurement_qty_to_avg_ )
         {
           return;
         }
         // we now have enough good gps measurements to calculate the origin
         sensor_msgs::NavSatFix gps_centroid = *msg;
         double n = origin_llh_[0].size();
-        gps_centroid.latitude = (1.0 / n) * std::accumulate(origin_llh_[0].begin(), origin_llh_[0].end(), 0.0);
-        gps_centroid.longitude = (1.0 / n) * std::accumulate(origin_llh_[1].begin(), origin_llh_[1].end(), 0.0);
-        gps_centroid.altitude = (1.0 / n) * std::accumulate(origin_llh_[2].begin(), origin_llh_[2].end(), 0.0);
+        gps_centroid.latitude = (1.0/n)*std::accumulate(origin_llh_[0].begin(), origin_llh_[0].end(), 0.0);
+        gps_centroid.longitude = (1.0/n)*std::accumulate(origin_llh_[1].begin(), origin_llh_[1].end(), 0.0);
+        gps_centroid.altitude = (1.0/n)*std::accumulate(origin_llh_[2].begin(), origin_llh_[2].end(), 0.0);
         gps_meas = gps_centroid;
         // If we haven't computed the transform yet, then
         // store this message as the initial GPS data to use
@@ -658,6 +670,7 @@ namespace RobotLocalization
         ROS_WARN_STREAM("Missing transform_good_ yet has_transform_gps_.");
         return;
       }
+
 
       double cartesian_x = 0.0;
       double cartesian_y = 0.0;
@@ -675,9 +688,9 @@ namespace RobotLocalization
         try
         {
           GeographicLib::UTMUPS::Forward(gps_meas.latitude, gps_meas.longitude,
-                                         zone_tmp, northp_tmp, cartesian_x, cartesian_y, utm_zone_);
+                                        zone_tmp, northp_tmp, cartesian_x, cartesian_y, utm_zone_);
         }
-        catch (const GeographicLib::GeographicErr &e)
+        catch (const GeographicLib::GeographicErr& e)
         {
           ROS_ERROR_STREAM_THROTTLE(1.0, e.what());
           return;
@@ -703,7 +716,7 @@ namespace RobotLocalization
       ROS_WARN_THROTTLE(15, "GNSS data used for origin is being reset due to a bad GNSS measurement.");
       // gps not good so we reset data used for origin used by geographic lib
       // check for has_transform_gps_ so we do not reset these variables after has_transform_gps_==true
-      // - to avoid changing downstream gps/odometry solutions
+      // - to avoid changing downstream gps/odometry solutions 
       current_good_gps_count_ = 0;
       current_delayed_gps_count_ = 0;
       origin_llh_[0].clear();
@@ -712,7 +725,7 @@ namespace RobotLocalization
     }
   }
 
-  void NavSatTransform::imuCallback(const sensor_msgs::ImuConstPtr &msg)
+  void NavSatTransform::imuCallback(const sensor_msgs::ImuConstPtr& msg)
   {
     // We need the baseLinkFrameId_ from the odometry message, so
     // we need to wait until we receive it.
@@ -760,14 +773,15 @@ namespace RobotLocalization
         rpy_angles = mat * rpy_angles;
         transform_orientation_.setRPY(rpy_angles.getX(), rpy_angles.getY(), rpy_angles.getZ());
 
-        ROS_DEBUG_STREAM("Initial corrected orientation roll, pitch, yaw is (" << rpy_angles.getX() << ", " << rpy_angles.getY() << ", " << rpy_angles.getZ() << ")");
+        ROS_DEBUG_STREAM("Initial corrected orientation roll, pitch, yaw is (" <<
+                         rpy_angles.getX() << ", " << rpy_angles.getY() << ", " << rpy_angles.getZ() << ")");
 
         has_transform_imu_ = true;
       }
     }
   }
 
-  void NavSatTransform::odomCallback(const nav_msgs::OdometryConstPtr &msg)
+  void NavSatTransform::odomCallback(const nav_msgs::OdometryConstPtr& msg)
   {
     world_frame_id_ = msg->header.frame_id;
     base_link_frame_id_ = msg->child_frame_id;
@@ -791,6 +805,7 @@ namespace RobotLocalization
     odom_updated_ = true;
   }
 
+
   bool NavSatTransform::prepareFilteredGps(sensor_msgs::NavSatFix &filtered_gps)
   {
     bool new_data = false;
@@ -809,9 +824,9 @@ namespace RobotLocalization
         rot_6d(rInd, 0) = rot.getRow(rInd).getX();
         rot_6d(rInd, 1) = rot.getRow(rInd).getY();
         rot_6d(rInd, 2) = rot.getRow(rInd).getZ();
-        rot_6d(rInd + POSITION_SIZE, 3) = rot.getRow(rInd).getX();
-        rot_6d(rInd + POSITION_SIZE, 4) = rot.getRow(rInd).getY();
-        rot_6d(rInd + POSITION_SIZE, 5) = rot.getRow(rInd).getZ();
+        rot_6d(rInd+POSITION_SIZE, 3) = rot.getRow(rInd).getX();
+        rot_6d(rInd+POSITION_SIZE, 4) = rot.getRow(rInd).getY();
+        rot_6d(rInd+POSITION_SIZE, 5) = rot.getRow(rInd).getZ();
       }
 
       // Rotate the covariance
@@ -864,9 +879,9 @@ namespace RobotLocalization
         rot_6d(rInd, 0) = rot.getRow(rInd).getX();
         rot_6d(rInd, 1) = rot.getRow(rInd).getY();
         rot_6d(rInd, 2) = rot.getRow(rInd).getZ();
-        rot_6d(rInd + POSITION_SIZE, 3) = rot.getRow(rInd).getX();
-        rot_6d(rInd + POSITION_SIZE, 4) = rot.getRow(rInd).getY();
-        rot_6d(rInd + POSITION_SIZE, 5) = rot.getRow(rInd).getZ();
+        rot_6d(rInd+POSITION_SIZE, 3) = rot.getRow(rInd).getX();
+        rot_6d(rInd+POSITION_SIZE, 4) = rot.getRow(rInd).getY();
+        rot_6d(rInd+POSITION_SIZE, 5) = rot.getRow(rInd).getZ();
       }
 
       // Rotate the covariance
@@ -893,7 +908,7 @@ namespace RobotLocalization
     return new_data;
   }
 
-  void NavSatTransform::setTransformGps(const sensor_msgs::NavSatFixConstPtr &msg)
+  void NavSatTransform::setTransformGps(const sensor_msgs::NavSatFixConstPtr& msg)
   {
     double cartesian_x = 0;
     double cartesian_y = 0;
@@ -916,15 +931,17 @@ namespace RobotLocalization
       utm_meridian_convergence_ = utm_meridian_convergence_degrees * NavsatConversions::RADIANS_PER_DEGREE;
     }
 
-    ROS_INFO_STREAM("Datum (latitude, longitude, altitude) is (" << std::fixed << msg->latitude << ", " << msg->longitude << ", " << msg->altitude << ")");
-    ROS_INFO_STREAM("Datum " << ((use_local_cartesian_) ? "Local Cartesian" : "UTM") << " coordinate is (" << std::fixed << cartesian_x << ", " << cartesian_y << ") zone " << utm_zone_);
+    ROS_INFO_STREAM("Datum (latitude, longitude, altitude) is (" << std::fixed << msg->latitude << ", " <<
+                    msg->longitude << ", " << msg->altitude << ")");
+    ROS_INFO_STREAM("Datum " << ((use_local_cartesian_)? "Local Cartesian" : "UTM") <<
+                    " coordinate is (" << std::fixed << cartesian_x << ", " << cartesian_y << ") zone " << utm_zone_);
 
     transform_cartesian_pose_.setOrigin(tf2::Vector3(cartesian_x, cartesian_y, msg->altitude));
     transform_cartesian_pose_.setRotation(tf2::Quaternion::getIdentity());
     has_transform_gps_ = true;
   }
 
-  void NavSatTransform::setTransformOdometry(const nav_msgs::OdometryConstPtr &msg)
+  void NavSatTransform::setTransformOdometry(const nav_msgs::OdometryConstPtr& msg)
   {
     tf2::fromMsg(msg->pose.pose, transform_world_pose_);
     has_transform_odom_ = true;
@@ -946,4 +963,4 @@ namespace RobotLocalization
     }
   }
 
-} // namespace RobotLocalization
+}  // namespace RobotLocalization
