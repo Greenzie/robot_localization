@@ -21,6 +21,7 @@ Forthcoming
 * Added local cartesian option
 * Adding Pipeline
 * Throttling GNSS Origin data warning
+* Added precision to origin output
 
 2.7.3 (2021-07-23)
 ------------------
