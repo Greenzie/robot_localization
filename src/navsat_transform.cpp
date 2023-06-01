@@ -931,7 +931,7 @@ namespace RobotLocalization
       utm_meridian_convergence_ = utm_meridian_convergence_degrees * NavsatConversions::RADIANS_PER_DEGREE;
     }
 
-    ROS_INFO_STREAM("Datum (latitude, longitude, altitude) is (" << std::fixed << msg->latitude << ", " <<
+    ROS_INFO_STREAM("Datum (latitude, longitude, altitude) is (" << std::fixed << std::setprecision(16) << msg->latitude << ", " <<
                     msg->longitude << ", " << msg->altitude << ")");
     ROS_INFO_STREAM("Datum " << ((use_local_cartesian_)? "Local Cartesian" : "UTM") <<
                     " coordinate is (" << std::fixed << cartesian_x << ", " << cartesian_y << ") zone " << utm_zone_);
