@@ -22,6 +22,7 @@ Forthcoming
 * Adding Pipeline
 * Throttling GNSS Origin data warning
 * Added precision to origin output
+* Added check to prevent null GPS odometry from being published due to missing transform
 
 2.7.3 (2021-07-23)
 ------------------
