@@ -564,7 +564,7 @@ namespace RobotLocalization
     }
   }
 
-  void NavSatTransform::getRobotOriginWorldPose(const tf2::Transform &gps_odom_pose,
+  bool NavSatTransform::getRobotOriginWorldPose(const tf2::Transform &gps_odom_pose,
                                                 tf2::Transform &robot_odom_pose,
                                                 const ros::Time &transform_time)
   {
@@ -610,6 +610,7 @@ namespace RobotLocalization
       ROS_WARN_STREAM_THROTTLE(5.0, "Could not obtain " << base_link_frame_id_ << "->" << gps_frame_id_ <<
         " transform. Will not remove offset of navsat device from robot's origin.");
     }
+    return can_transform;
   }
 
   void NavSatTransform::gpsFixCallback(const sensor_msgs::NavSatFixConstPtr& msg)
@@ -867,42 +868,44 @@ namespace RobotLocalization
 
       // Want the pose of the vehicle origin, not the GPS
       tf2::Transform transformed_cartesian_robot;
-      getRobotOriginWorldPose(transformed_cartesian_gps, transformed_cartesian_robot, gps_odom.header.stamp);
-
-      // Rotate the covariance as well
-      tf2::Matrix3x3 rot(cartesian_world_transform_.getRotation());
-      Eigen::MatrixXd rot_6d(POSE_SIZE, POSE_SIZE);
-      rot_6d.setIdentity();
-
-      for (size_t rInd = 0; rInd < POSITION_SIZE; ++rInd)
+      bool is_transformed = getRobotOriginWorldPose(transformed_cartesian_gps, transformed_cartesian_robot, gps_odom.header.stamp);
+      if (is_transformed)
       {
-        rot_6d(rInd, 0) = rot.getRow(rInd).getX();
-        rot_6d(rInd, 1) = rot.getRow(rInd).getY();
-        rot_6d(rInd, 2) = rot.getRow(rInd).getZ();
-        rot_6d(rInd+POSITION_SIZE, 3) = rot.getRow(rInd).getX();
-        rot_6d(rInd+POSITION_SIZE, 4) = rot.getRow(rInd).getY();
-        rot_6d(rInd+POSITION_SIZE, 5) = rot.getRow(rInd).getZ();
-      }
+        // Rotate the covariance as well
+        tf2::Matrix3x3 rot(cartesian_world_transform_.getRotation());
+        Eigen::MatrixXd rot_6d(POSE_SIZE, POSE_SIZE);
+        rot_6d.setIdentity();
 
-      // Rotate the covariance
-      latest_cartesian_covariance_ = rot_6d * latest_cartesian_covariance_.eval() * rot_6d.transpose();
-
-      // Now fill out the message. Set the orientation to the identity.
-      tf2::toMsg(transformed_cartesian_robot, gps_odom.pose.pose);
-      gps_odom.pose.pose.position.z = (zero_altitude_ ? 0.0 : gps_odom.pose.pose.position.z);
-
-      // Copy the measurement's covariance matrix so that we can rotate it later
-      for (size_t i = 0; i < POSE_SIZE; i++)
-      {
-        for (size_t j = 0; j < POSE_SIZE; j++)
+        for (size_t rInd = 0; rInd < POSITION_SIZE; ++rInd)
         {
-          gps_odom.pose.covariance[POSE_SIZE * i + j] = latest_cartesian_covariance_(i, j);
+          rot_6d(rInd, 0) = rot.getRow(rInd).getX();
+          rot_6d(rInd, 1) = rot.getRow(rInd).getY();
+          rot_6d(rInd, 2) = rot.getRow(rInd).getZ();
+          rot_6d(rInd+POSITION_SIZE, 3) = rot.getRow(rInd).getX();
+          rot_6d(rInd+POSITION_SIZE, 4) = rot.getRow(rInd).getY();
+          rot_6d(rInd+POSITION_SIZE, 5) = rot.getRow(rInd).getZ();
         }
-      }
 
-      // Mark this GPS as used
-      gps_updated_ = false;
-      new_data = true;
+        // Rotate the covariance
+        latest_cartesian_covariance_ = rot_6d * latest_cartesian_covariance_.eval() * rot_6d.transpose();
+
+        // Now fill out the message. Set the orientation to the identity.
+        tf2::toMsg(transformed_cartesian_robot, gps_odom.pose.pose);
+        gps_odom.pose.pose.position.z = (zero_altitude_ ? 0.0 : gps_odom.pose.pose.position.z);
+
+        // Copy the measurement's covariance matrix so that we can rotate it later
+        for (size_t i = 0; i < POSE_SIZE; i++)
+        {
+          for (size_t j = 0; j < POSE_SIZE; j++)
+          {
+            gps_odom.pose.covariance[POSE_SIZE * i + j] = latest_cartesian_covariance_(i, j);
+          }
+        }
+
+        // Mark this GPS as used
+        gps_updated_ = false;
+        new_data = true;
+      }
     }
 
     return new_data;
@@ -964,3 +967,4 @@ namespace RobotLocalization
   }
 
 }  // namespace RobotLocalization
+

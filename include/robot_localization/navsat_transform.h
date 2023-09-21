@@ -108,8 +108,10 @@ class NavSatTransform
 
     //! @brief Given the pose of the navsat sensor in the world frame, removes the offset from the vehicle's centroid
     //! and returns the world-frame pose of said centroid.
+    //! @param[out] gps_odom The world-frame pose of base_link
+    //! @return whether robot_odom_pose was transformed 
     //!
-    void getRobotOriginWorldPose(const tf2::Transform &gps_odom_pose,
+    bool getRobotOriginWorldPose(const tf2::Transform &gps_odom_pose,
                                  tf2::Transform &robot_odom_pose,
                                  const ros::Time &transform_time);
 
@@ -401,3 +403,4 @@ class NavSatTransform
 }  // namespace RobotLocalization
 
 #endif  // ROBOT_LOCALIZATION_NAVSAT_TRANSFORM_H
+
