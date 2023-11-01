@@ -24,7 +24,8 @@ find_package(catkin REQUIRED COMPONENTS
   std_srvs
   tf2
   tf2_geometry_msgs
-  tf2_ros)
+  tf2_ros
+  ublox_msgs)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(YAML_CPP yaml-cpp)
@@ -122,6 +123,7 @@ catkin_package(
     tf2
     tf2_geometry_msgs
     tf2_ros
+    ublox_msgs
   DEPENDS
     ${EIGEN_PACKAGE}
     GeographicLib
@@ -150,7 +152,7 @@ add_library(ros_robot_localization_listener src/ros_robot_localization_listener.
 add_library(ros_filter_utilities src/ros_filter_utilities.cpp)
 add_library(ros_filter_bias_estimator src/ros_filter_bias_estimator.cpp)
 add_library(ros_filter src/ros_filter.cpp)
-add_library(navsat_transform src/navsat_transform.cpp)
+add_library(navsat_transform src/navsat_transform.cpp src/mkgmtime.c)
 add_library(ekf_localization_nodelet src/ekf_localization_nodelet.cpp)
 add_library(ukf_localization_nodelet src/ukf_localization_nodelet.cpp)
 add_library(navsat_transform_nodelet src/navsat_transform_nodelet.cpp)

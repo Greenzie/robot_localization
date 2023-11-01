@@ -43,6 +43,11 @@
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/NavSatFix.h>
+#include <ublox_msgs/NavPVT.h>
+
+extern "C" {
+  #include "mkgmtime.h"
+}
 
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_ros/static_transform_broadcaster.h>
@@ -130,6 +135,11 @@ class NavSatTransform
     //!
     void odomCallback(const nav_msgs::OdometryConstPtr& msg);
 
+    //! @brief Callback for the GPS Nav PVT data
+    //! @param[in] msg The NavPVT message to process
+    //!
+    void gpsNavPVTCallback(const ublox_msgs::NavPVTConstPtr& msg);
+
     //! @brief Converts the odometry data back to GPS and broadcasts it
     //! @param[out] filtered_gps The NavSatFix message to prepare
     //!
@@ -159,6 +169,27 @@ class NavSatTransform
     //! @param[in] point the point in map frame to use to transform
     //!
     void mapToLL(const tf2::Vector3& point, double& latitude, double& longitude, double& altitude) const;
+
+    //! @brief converts a NavPVT message time to seconds since epoc
+    //! @param[in] msg NavPVT the message with time to convert
+    //! @return time in seconds since epoc
+    //!
+    inline long uBloxTimeToUtcSeconds(const ublox_msgs::NavPVTConstPtr& msg) {
+      // Create TM struct for mkgmtime
+      struct tm time = {0};
+      time.tm_year = msg->year - 1900; 
+      time.tm_mon = msg->month - 1; 
+      time.tm_mday = msg->day;
+      time.tm_hour = msg->hour;   
+      time.tm_min = msg->min; 
+      time.tm_sec = msg->sec;
+      // Use the version that is included (with attribution)
+      return mkgmtime(&time);
+    }
+
+    //! @brief Whether using NavPVT message (doesn't need a filter node)
+    //!
+    bool use_nav_pvt_;
 
     //! @brief Whether or not we broadcast the cartesian transform
     //!
@@ -358,6 +389,10 @@ class NavSatTransform
     //! @brief GPS subscriber
     //!
     ros::Subscriber gps_sub_;
+
+    //! @brief GPS Nav PVT subscriber
+    //!
+    ros::Subscriber gps_nav_pvt_sub_;
 
     //! @brief Subscribes to imu topic
     //!

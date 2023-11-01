@@ -44,6 +44,7 @@
 namespace RobotLocalization
 {
   NavSatTransform::NavSatTransform(ros::NodeHandle nh, ros::NodeHandle nh_priv) :
+    use_nav_pvt_(false),
     broadcast_cartesian_transform_(false),
     broadcast_cartesian_transform_as_parent_frame_(false),
     gps_updated_(false),
@@ -80,6 +81,7 @@ namespace RobotLocalization
     double transform_timeout = 0.0;
 
     // Load the parameters we need
+    nh_priv.param("use_nav_pvt", use_nav_pvt_, false);  // By default - don't use this
     nh_priv.getParam("magnetic_declination_radians", magnetic_declination_);
     nh_priv.param("yaw_offset", yaw_offset_, 0.0);
     nh_priv.param("broadcast_cartesian_transform", broadcast_cartesian_transform_, false);
@@ -177,8 +179,19 @@ namespace RobotLocalization
       }
     }
 
-    odom_sub_ = nh.subscribe("odometry/filtered", 1, &NavSatTransform::odomCallback, this);
-    gps_sub_  = nh.subscribe("gps/fix", 1, &NavSatTransform::gpsFixCallback, this);
+    if(use_nav_pvt_)
+    {
+      gps_nav_pvt_sub_ = nh.subscribe("gps/navpvt", 1, &NavSatTransform::gpsNavPVTCallback, this);
+      nh_priv.param("gps_frame", gps_frame_id_, std::string(""));  // Default to none if not set
+      nh_priv.param("world_frame", world_frame_id_, std::string(""));  // Default to none if not set
+      nh_priv.param("base_link_frame", base_link_frame_id_, std::string(""));  // Default to none if not set
+    }
+    else
+    {
+      // Only needed if not using NavPVT as that message substitutes for both of these
+      odom_sub_        = nh.subscribe("odometry/filtered", 1, &NavSatTransform::odomCallback, this);
+      gps_sub_         = nh.subscribe("gps/fix", 1, &NavSatTransform::gpsFixCallback, this);
+    }
 
     if (!use_odometry_yaw_ && !use_manual_datum_)
     {
@@ -207,30 +220,33 @@ namespace RobotLocalization
 //  void NavSatTransform::run()
   void NavSatTransform::periodicUpdate(const ros::TimerEvent& event)
   {
-    if (!transform_good_)
+    if (!use_nav_pvt_)
     {
-      computeTransform();
+      if (!transform_good_)
+      {
+        computeTransform();
 
-      if (transform_good_ && !use_odometry_yaw_ && !use_manual_datum_)
-      {
-        // Once we have the transform, we don't need the IMU
-        imu_sub_.shutdown();
-      }
-    }
-    else
-    {
-      nav_msgs::Odometry gps_odom;
-      if (prepareGpsOdometry(gps_odom))
-      {
-        gps_odom_pub_.publish(gps_odom);
-      }
-
-      if (publish_gps_)
-      {
-        sensor_msgs::NavSatFix odom_gps;
-        if (prepareFilteredGps(odom_gps))
+        if (transform_good_ && !use_odometry_yaw_ && !use_manual_datum_)
         {
-          filtered_gps_pub_.publish(odom_gps);
+          // Once we have the transform, we don't need the IMU
+          imu_sub_.shutdown();
+        }
+      }
+      else
+      {
+        nav_msgs::Odometry gps_odom;
+        if (prepareGpsOdometry(gps_odom))
+        {
+          gps_odom_pub_.publish(gps_odom);
+        }
+
+        if (publish_gps_)
+        {
+          sensor_msgs::NavSatFix odom_gps;
+          if (prepareFilteredGps(odom_gps))
+          {
+            filtered_gps_pub_.publish(odom_gps);
+          }
         }
       }
     }
@@ -726,6 +742,217 @@ namespace RobotLocalization
     }
   }
 
+  void NavSatTransform::gpsNavPVTCallback(const ublox_msgs::NavPVTConstPtr& msg)
+  {
+    // gps_frame_id_ set manually if using NavPVT
+    if (gps_frame_id_.empty())
+    {
+      ROS_WARN_STREAM_ONCE("GPS frame ID not set for NavPVT. Will assume navsat device is mounted at robot's "
+        "origin.");
+    }
+
+    // By the end of this function call, the following should be done:
+    //  1) Publish from gps_odom_pub_ as the filter output (act as though this is the filter node)
+    //  2) Publish from filtered_gps_pub_ (if set to true)
+    // To do this, need to do the following:
+    //  1) Capture the GNSS datum
+    //  2) Assume odometry hasn't moved such that GNSS datum is at 0
+    //  3) Capture orientation (fake publish the IMU message to capture this)
+    //  4) Create necessary transforms
+    // Make sure the GPS data is usable
+    bool good_gps = (msg->fixType != ublox_msgs::NavPVT::FIX_TYPE_NO_FIX &&
+                     msg->fixType != ublox_msgs::NavPVT::FIX_TYPE_TIME_ONLY &&
+                     !std::isnan(msg->height) &&
+                     !std::isnan(msg->lat) &&
+                     !std::isnan(msg->lon));
+
+    if (good_gps)
+    {
+      sensor_msgs::NavSatFix gps_meas;
+      // Convert NavPVT time to ROS timestamp
+      // The time in nanoseconds from the NavPVT message can be between -1e9 and 1e9
+      //  The ros time uses only unsigned values, so a negative nano seconds must be
+      //  converted to a positive value
+      if (msg->nano < 0) {
+        gps_meas.header.stamp.sec = uBloxTimeToUtcSeconds(msg) - 1;
+        gps_meas.header.stamp.nsec = (uint32_t)(msg->nano + 1e9);
+      }
+      else {
+        gps_meas.header.stamp.sec = uBloxTimeToUtcSeconds(msg);
+        gps_meas.header.stamp.nsec = (uint32_t)(msg->nano);
+      }
+      // Handle covariance (ENU = hAcc, hAcc, vAcc) in meters^2
+      gps_meas.position_covariance[0] = pow(msg->hAcc * 1e-3, 2);
+      gps_meas.position_covariance[4] = pow(msg->hAcc * 1e-3, 2);
+      gps_meas.position_covariance[8] = pow(msg->vAcc * 1e-3, 2);
+      gps_meas.position_covariance_type = sensor_msgs::NavSatFix::COVARIANCE_TYPE_KNOWN;
+      // Either status is GBAS or FIX (0). Since is good GPS, it's not NO_FIX
+      gps_meas.status.status = ((msg->flags & ublox_msgs::NavPVT::FLAGS_DIFF_SOLN) != 0) ?
+        sensor_msgs::NavSatStatus::STATUS_GBAS_FIX :
+        sensor_msgs::NavSatStatus::STATUS_FIX;
+      // Measurement is in gps_frame
+      gps_meas.header.frame_id = gps_frame_id_;
+
+      // Set declination
+      magnetic_declination_ = msg->magDec * 1e-2 * PI / 180.0;
+
+      if (transform_good_ || use_manual_datum_)
+      {
+        ROS_INFO_STREAM_ONCE("Begun using GPS Nav PVT data for cartesian coordinates, velocity, and heading.");
+        gps_meas.latitude = static_cast<double>(msg->lat) * 1e-7;
+        gps_meas.longitude = static_cast<double>(msg->lon) * 1e-7;
+        gps_meas.altitude = static_cast<double>(msg->height) * 1e-3;
+      }
+      else if (!has_transform_gps_)
+      {
+        // check for `has_transform_gps_` because we want to set the gps origin once
+        if(++current_delayed_gps_count_ < origin_measurement_delay_)
+        {
+          return;
+        }
+
+        origin_llh_[0].push_back(static_cast<double>(msg->lat) * 1e-7);  // Decimal degrees
+        origin_llh_[1].push_back(static_cast<double>(msg->lon) * 1e-7);  // Decimal degrees
+        origin_llh_[2].push_back(static_cast<double>(msg->height) * 1e-3);  // Transform to meters
+
+        if (++current_good_gps_count_ < origin_measurement_qty_to_avg_ )
+        {
+          return;
+        }
+        // We now have enough good gps measurements to calculate the origin
+        // Use the NavSatFix message since already set up for doubles
+        double n = origin_llh_[0].size();
+        gps_meas.latitude = (1.0/n)*std::accumulate(origin_llh_[0].begin(), origin_llh_[0].end(), 0.0);
+        gps_meas.longitude = (1.0/n)*std::accumulate(origin_llh_[1].begin(), origin_llh_[1].end(), 0.0);
+        gps_meas.altitude = (1.0/n)*std::accumulate(origin_llh_[2].begin(), origin_llh_[2].end(), 0.0);
+
+        // If we haven't computed the transform yet, then
+        // store this message as the initial GPS data to use
+        // first if already tells us -- !transform_good_ && !use_manual_datum_
+        // Have enough information to set a manual datum.
+        robot_localization::SetDatum::Request request;
+        request.geo_pose.position.latitude = gps_meas.latitude;
+        request.geo_pose.position.longitude = gps_meas.longitude;
+        request.geo_pose.position.altitude = gps_meas.altitude;
+        tf2::Quaternion quat;
+        quat.setRPY(0.0, 0.0, msg->heading * 1e-5 * PI / 180.0);
+        request.geo_pose.orientation = tf2::toMsg(quat);
+        robot_localization::SetDatum::Response response;
+        datumCallback(request, response);
+        // Override this. We have the information necessary, so want to compute and use the typical methods.
+        use_manual_datum_ = false;
+      }
+      else
+      {
+        // !transform_good_ and has_transform_gps_
+        ROS_WARN_STREAM("Missing transform_good_ yet has_transform_gps_.");
+        return;
+      }
+
+      double cartesian_x = 0.0;
+      double cartesian_y = 0.0;
+      double cartesian_z = 0.0;
+      if (use_local_cartesian_)
+      {
+        gps_local_cartesian_.Forward(gps_meas.latitude, gps_meas.longitude, gps_meas.altitude,
+                                     cartesian_x, cartesian_y, cartesian_z);
+      }
+      else
+      {
+        // Transform to UTM using the fixed utm_zone_
+        int zone_tmp;
+        bool northp_tmp;
+        try
+        {
+          GeographicLib::UTMUPS::Forward(gps_meas.latitude, gps_meas.longitude,
+                                        zone_tmp, northp_tmp, cartesian_x, cartesian_y, utm_zone_);
+        }
+        catch (const GeographicLib::GeographicErr& e)
+        {
+          ROS_ERROR_STREAM_THROTTLE(1.0, e.what());
+          return;
+        }
+      }
+      latest_cartesian_pose_.setOrigin(tf2::Vector3(cartesian_x, cartesian_y, gps_meas.altitude));
+      latest_cartesian_covariance_.setZero();
+
+      // Copy the measurement's covariance matrix so that we can rotate it later
+      for (size_t i = 0; i < POSITION_SIZE; i++)
+      {
+        for (size_t j = 0; j < POSITION_SIZE; j++)
+        {
+          latest_cartesian_covariance_(i, j) = gps_meas.position_covariance[POSITION_SIZE * i + j];
+        }
+      }
+
+      // State that GPS data was updated
+      gps_update_time_ = gps_meas.header.stamp;
+      gps_updated_ = true;
+
+      // Similar to periodic update, but now all information comes in on 1 message, so do this on message reception
+      if (!transform_good_)
+      { 
+        computeTransform();
+
+        if (transform_good_ && !use_odometry_yaw_ && !use_manual_datum_)
+        {
+          // Once we have the transform, we don't need the IMU
+          imu_sub_.shutdown();
+        }
+      }
+      else
+      {
+        nav_msgs::Odometry gps_odom;
+        if (prepareGpsOdometry(gps_odom))
+        {
+          // Include the rest of the information
+          gps_odom.header.frame_id = world_frame_id_;
+          gps_odom.child_frame_id = base_link_frame_id_;  // Typically handled by the filter
+          
+          // Check whether velocity should be negative in child frame
+          if((abs(msg->heading - msg->headVeh) * 1e-5) > 90.0)
+          {
+            // Vehicle pointed in opposite direction than the vehicle speed - it's moving backwards
+            gps_odom.twist.twist.linear.x = -msg->gSpeed * 1e-3;  // Ground speed in m/s
+          }
+          else
+          {
+            gps_odom.twist.twist.linear.x = msg->gSpeed * 1e-3;  // Ground speed in m/s
+          }
+          gps_odom.twist.covariance[0] = pow(msg->sAcc * 1e-3, 2);  // Speed accuracy in (m/s)^2
+          gps_odom.twist.covariance[21] = pow(TAU, 2);  // (2 rad/s)^2 - don't know rotation rate
+          gps_odom.twist.covariance[28] = pow(TAU, 2);  // (2 rad/s)^2 - don't know rotation rate
+          gps_odom.twist.covariance[35] = pow(TAU, 2);  // (2 rad/s)^2 - don't know rotation rate
+          // Orientation and orientation covariance
+          tf2::Quaternion quat;
+          quat.setRPY(0.0, 0.0, msg->heading * 1e-5 * PI / 180.0);
+          gps_odom.pose.pose.orientation = tf2::toMsg(quat);
+          gps_odom.pose.covariance[35] = pow(msg->headAcc * 1e-5 * PI / 180.0, 2);  // Heading accuracy in deg^2
+
+          // Publish as though this were the filter
+          gps_odom_pub_.publish(gps_odom);
+
+          if (publish_gps_)
+          {
+            filtered_gps_pub_.publish(gps_meas);
+          }
+        }
+      }
+    }
+    else if (!has_transform_gps_)
+    {
+      ROS_WARN_THROTTLE(15, "GNSS data used for origin is being reset due to a bad GNSS measurement.");
+      // gps not good so we reset data used for origin used by geographic lib
+      // check for has_transform_gps_ so we do not reset these variables after has_transform_gps_==true
+      // - to avoid changing downstream gps/odometry solutions 
+      current_good_gps_count_ = 0;
+      current_delayed_gps_count_ = 0;
+      origin_llh_[0].clear();
+      origin_llh_[1].clear();
+      origin_llh_[2].clear();
+    }
+  }
+
   void NavSatTransform::imuCallback(const sensor_msgs::ImuConstPtr& msg)
   {
     // We need the baseLinkFrameId_ from the odometry message, so
@@ -859,7 +1086,8 @@ namespace RobotLocalization
   {
     bool new_data = false;
 
-    if (transform_good_ && gps_updated_ && odom_updated_)
+    // Only need updated odom if not using NavPVT. Otherwise, relevant information handled separately.
+    if (transform_good_ && gps_updated_ && (odom_updated_ || use_nav_pvt_))
     {
       gps_odom = cartesianToMap(latest_cartesian_pose_);
 
