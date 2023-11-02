@@ -57,6 +57,7 @@ namespace RobotLocalization
     use_manual_datum_(false),
     use_odometry_yaw_(false),
     use_local_cartesian_(false),
+    publish_transform_(false),
     zero_altitude_(false),
     current_good_gps_count_(0),
     current_delayed_gps_count_(0),
@@ -67,7 +68,8 @@ namespace RobotLocalization
     utm_zone_(0),
     world_frame_id_("odom"),
     transform_timeout_(ros::Duration(0)),
-    tf_listener_(tf_buffer_)
+    tf_listener_(tf_buffer_),
+    tf_time_offset_(ros::Duration(0))
   {
     ROS_INFO("Waiting for valid clock time...");
     ros::Time::waitForValid();
@@ -185,6 +187,12 @@ namespace RobotLocalization
       nh_priv.param("gps_frame", gps_frame_id_, std::string(""));  // Default to none if not set
       nh_priv.param("world_frame", world_frame_id_, std::string(""));  // Default to none if not set
       nh_priv.param("base_link_frame", base_link_frame_id_, std::string(""));  // Default to none if not set
+      // Whether we're publshing the world_frame->base_link_frame transform
+      nh_priv.param("publish_tf", publish_transform_, false);
+      // Transform future dating
+      double offsetTmp;
+      nh_priv.param("transform_time_offset", offsetTmp, 0.0);
+      tf_time_offset_.fromSec(offsetTmp);
     }
     else
     {
@@ -891,7 +899,7 @@ namespace RobotLocalization
 
       // Similar to periodic update, but now all information comes in on 1 message, so do this on message reception
       if (!transform_good_)
-      { 
+      {
         computeTransform();
 
         if (transform_good_ && !use_odometry_yaw_ && !use_manual_datum_)
@@ -903,6 +911,58 @@ namespace RobotLocalization
       else
       {
         nav_msgs::Odometry gps_odom;
+
+        // Handle the transform if required
+        if (publish_transform_)
+        {
+          // World (map) to Odom is a static transform
+          static tf2_ros::StaticTransformBroadcaster odom_broadcaster;
+          static_transform_stamped_map_odom_.header.stamp = gps_meas.header.stamp;
+          static_transform_stamped_map_odom_.header.frame_id = "map";
+          static_transform_stamped_map_odom_.child_frame_id = "odom";
+          static_transform_stamped_map_odom_.transform.translation.x = 0;
+          static_transform_stamped_map_odom_.transform.translation.y = 0;
+          static_transform_stamped_map_odom_.transform.translation.z = 0;
+          tf2::Quaternion quat;
+          quat.setRPY(0, 0, 0);
+          static_transform_stamped_map_odom_.transform.rotation.x = quat.x();
+          static_transform_stamped_map_odom_.transform.rotation.y = quat.y();
+          static_transform_stamped_map_odom_.transform.rotation.z = quat.z();
+          static_transform_stamped_map_odom_.transform.rotation.w = quat.w();
+          odom_broadcaster.sendTransform(static_transform_stamped_map_odom_);
+
+
+          // Odom to world frame is effectively GPS sensor moved to robot base_link in map frame.
+          // Can calculate this in cartesian frame and transform to world frame (map frame).
+          tf2::Transform transform_cartesian_gps_pose;
+          tf2::Transform transformed_cartesian_gps_pose;
+          transform_cartesian_gps_pose.setOrigin(tf2::Vector3(cartesian_x, cartesian_y, msg->height));
+          transform_cartesian_gps_pose.setRotation(tf2::Quaternion::getIdentity());
+          getRobotOriginCartesianPose(transform_cartesian_gps_pose, transformed_cartesian_gps_pose, gps_odom.header.stamp);
+          // Now transform the transformed_cartesian_gps_pose to map
+          gps_odom = cartesianToMap(transformed_cartesian_gps_pose);
+          // Orientation
+          quat.setRPY(0.0, 0.0, msg->heading * 1e-5 * PI / 180.0);
+          gps_odom.pose.pose.orientation = tf2::toMsg(quat);
+          // Now, gps_odom is in the correct frame for the offsets and orientation.
+          //  Use this information to create the odom to base_link transformation
+          transform_stamped_odom_base_footprint_.header.frame_id = "odom";
+          transform_stamped_odom_base_footprint_.header.stamp = gps_meas.header.stamp + tf_time_offset_;
+          transform_stamped_odom_base_footprint_.child_frame_id = "base_footprint";
+
+          transform_stamped_odom_base_footprint_.transform.translation.x = gps_odom.pose.pose.position.x;
+          transform_stamped_odom_base_footprint_.transform.translation.y = gps_odom.pose.pose.position.y;
+          transform_stamped_odom_base_footprint_.transform.translation.z = gps_odom.pose.pose.position.z;
+
+          transform_stamped_odom_base_footprint_.transform.rotation.w = gps_odom.pose.pose.orientation.w;
+          transform_stamped_odom_base_footprint_.transform.rotation.x = gps_odom.pose.pose.orientation.x;
+          transform_stamped_odom_base_footprint_.transform.rotation.y = gps_odom.pose.pose.orientation.y;
+          transform_stamped_odom_base_footprint_.transform.rotation.z = gps_odom.pose.pose.orientation.z;
+
+          base_footprint_broadcaster_.sendTransform(transform_stamped_odom_base_footprint_);
+
+        }
+
         if (prepareGpsOdometry(gps_odom))
         {
           // Include the rest of the information

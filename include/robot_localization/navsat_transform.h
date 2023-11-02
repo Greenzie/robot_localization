@@ -52,6 +52,7 @@ extern "C" {
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
 
 #include <Eigen/Dense>
@@ -244,6 +245,10 @@ class NavSatTransform
     //!
     bool use_local_cartesian_;
 
+    //! @brief Whether to publish transform (only if using NavPVT)
+    //!
+    bool publish_transform_;
+
     //! @brief When true, do not print warnings for tf lookup failures.
     //!
     bool tf_silent_failure_;
@@ -433,6 +438,30 @@ class NavSatTransform
     //! @brief Used for publishing the static world_frame->cartesian transform
     //!
     tf2_ros::StaticTransformBroadcaster cartesian_broadcaster_;
+
+    //! @brief broadcaster of worldTransform tfs
+    //!
+    tf2_ros::TransformBroadcaster base_footprint_broadcaster_;
+
+    //! @brief Message that contains our latest transform (i.e., state)
+    //!
+    //! We use the vehicle's latest state in a number of places, and often
+    //! use it as a transform, so this is the most convenient variable to
+    //! use as our global "current state" object
+    //!
+    geometry_msgs::TransformStamped world_base_link_trans_msg_;
+
+    //! @brief For future (or past) dating the world_frame->base_link_frame transform
+    //!
+    ros::Duration tf_time_offset_;
+
+    //! @brief Map to odom
+    //!
+    geometry_msgs::TransformStamped static_transform_stamped_map_odom_;
+
+    //! @brief odom to base_link
+    //! 
+    geometry_msgs::TransformStamped transform_stamped_odom_base_footprint_;
 };
 
 }  // namespace RobotLocalization
