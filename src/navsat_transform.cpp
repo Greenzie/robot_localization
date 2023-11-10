@@ -62,6 +62,7 @@ namespace RobotLocalization
     current_good_gps_count_(0),
     current_delayed_gps_count_(0),
     magnetic_declination_(0.0),
+    ins_timeout_ms_(static_cast<uint32_t>(2.5 * 1000.0 / 30.0)),  // Set for 30Hz and 1 missed message
     yaw_offset_(0.0),
     base_link_frame_id_("base_link"),
     gps_frame_id_(""),
@@ -183,7 +184,7 @@ namespace RobotLocalization
 
     if(use_nav_pvt_)
     {
-      gps_nav_pvt_sub_ = nh.subscribe("gps/navpvt", 1, &NavSatTransform::gpsNavPVTCallback, this);
+      gps_nav_pvt_sub_ = nh.subscribe("ublox/ubx_nav_pvt", 1, &NavSatTransform::gpsNavPVTCallback, this);
       nh_priv.param("gps_frame", gps_frame_id_, std::string(""));  // Default to none if not set
       nh_priv.param("world_frame", world_frame_id_, std::string(""));  // Default to none if not set
       nh_priv.param("base_link_frame", base_link_frame_id_, std::string(""));  // Default to none if not set
@@ -193,6 +194,11 @@ namespace RobotLocalization
       double offsetTmp;
       nh_priv.param("transform_time_offset", offsetTmp, 0.0);
       tf_time_offset_.fromSec(offsetTmp);
+      // Set up the second subscription for INS data
+      gps_esf_ins_sub_ = nh.subscribe("ublox/ubx_esf_ins", 1, &NavSatTransform::gpsEsfINSCallback, this);
+      int ins_timeout_ms_int = static_cast<int>(ins_timeout_ms_);
+      nh_priv.param("ins_timeout_ms", ins_timeout_ms_int, ins_timeout_ms_int);
+      ins_timeout_ms_ = static_cast<uint32_t>(ins_timeout_ms_int);
     }
     else
     {
@@ -750,6 +756,11 @@ namespace RobotLocalization
     }
   }
 
+  void NavSatTransform::gpsEsfINSCallback(const ublox_msgs::EsfINSConstPtr& msg)
+  {
+    gps_esf_ins_ = *msg;
+  }
+
   void NavSatTransform::gpsNavPVTCallback(const ublox_msgs::NavPVTConstPtr& msg)
   {
     // gps_frame_id_ set manually if using NavPVT
@@ -978,6 +989,48 @@ namespace RobotLocalization
           else
           {
             gps_odom.twist.twist.linear.x = msg->gSpeed * 1e-3;  // Ground speed in m/s
+          }
+          // If the efsINS message is up to date with valid angular rates, use those.
+          // Unsigned int32s, so not using abs to avoid losing precision or causing a negative issue
+          // If one has rolled over, then a single point will be zeroed, then go back to normal.
+          uint32_t itow_diff = (msg->iTOW > gps_esf_ins_.iTOW) ?
+            msg->iTOW - gps_esf_ins_.iTOW :
+            gps_esf_ins_.iTOW - msg->iTOW;
+          if(itow_diff < ins_timeout_ms_)
+          {
+            // X
+            if((gps_esf_ins_.bitfield0 & ublox_msgs::EsfINS::BITFIELD0_X_ANG_RATE_VALID) > 0)
+            {
+              gps_odom.twist.twist.angular.x = static_cast<float>(gps_esf_ins_.xAngRate) / 1e3;
+              // TODO: Guess for now
+              gps_odom.twist.covariance[21] = pow(0.1, 2);  // (0.1 rad/s)^2 - don't know rotation rate
+            }
+            else
+            {
+              gps_odom.twist.covariance[21] = pow(TAU, 2);  // (2 rad/s)^2 - don't know rotation rate
+            }
+            // Y
+            if((gps_esf_ins_.bitfield0 & ublox_msgs::EsfINS::BITFIELD0_Y_ANG_RATE_VALID) > 0)
+            {
+              gps_odom.twist.twist.angular.y = static_cast<float>(gps_esf_ins_.yAngRate) / 1e3;
+              // TODO: Guess for now
+              gps_odom.twist.covariance[28] = pow(0.1, 2);  // (0.1 rad/s)^2 - don't know rotation rate
+            }
+            else
+            {
+              gps_odom.twist.covariance[28] = pow(TAU, 2);  // (2 rad/s)^2 - don't know rotation rate
+            }
+            // Z
+            if((gps_esf_ins_.bitfield0 & ublox_msgs::EsfINS::BITFIELD0_Z_ANG_RATE_VALID) > 0)
+            {
+              gps_odom.twist.twist.angular.z = static_cast<float>(gps_esf_ins_.zAngRate) / 1e3;
+              // TODO: Guess for now
+              gps_odom.twist.covariance[35] = pow(0.1, 2);  // (0.1 rad/s)^2 - don't know rotation rate
+            }
+            else
+            {
+              gps_odom.twist.covariance[35] = pow(TAU, 2);  // (2 rad/s)^2 - don't know rotation rate
+            }
           }
           gps_odom.twist.covariance[0] = pow(msg->sAcc * 1e-3, 2);  // Speed accuracy in (m/s)^2
           gps_odom.twist.covariance[21] = pow(TAU, 2);  // (2 rad/s)^2 - don't know rotation rate

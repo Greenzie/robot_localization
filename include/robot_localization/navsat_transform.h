@@ -44,6 +44,7 @@
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/NavSatFix.h>
 #include <ublox_msgs/NavPVT.h>
+#include <ublox_msgs/EsfINS.h>
 
 extern "C" {
   #include "mkgmtime.h"
@@ -140,6 +141,11 @@ class NavSatTransform
     //! @param[in] msg The NavPVT message to process
     //!
     void gpsNavPVTCallback(const ublox_msgs::NavPVTConstPtr& msg);
+
+    //! @brief Callback for the GPS esfINS data
+    //! @param[in] msg The esfINS message to process
+    //!
+    void gpsEsfINSCallback(const ublox_msgs::EsfINSConstPtr& msg);
 
     //! @brief Converts the odometry data back to GPS and broadcasts it
     //! @param[out] filtered_gps The NavSatFix message to prepare
@@ -283,6 +289,10 @@ class NavSatTransform
     //!
     double magnetic_declination_;
 
+    //! @brief INS timeout when using NavPVT + esfINS
+    //!
+    uint32_t ins_timeout_ms_;
+
     //! @brief UTM's meridian convergence
     //!
     //! Angle between projected meridian (True North) and UTM's grid Y-axis.
@@ -399,6 +409,10 @@ class NavSatTransform
     //!
     ros::Subscriber gps_nav_pvt_sub_;
 
+    //! @brief GPS esfINS subscriber
+    //!
+    ros::Subscriber gps_esf_ins_sub_;
+
     //! @brief Subscribes to imu topic
     //!
     ros::Subscriber imu_sub_;
@@ -462,6 +476,10 @@ class NavSatTransform
     //! @brief odom to base_link
     //! 
     geometry_msgs::TransformStamped transform_stamped_odom_base_footprint_;
+
+    //! @brief latest esfINS message
+    //!
+    ublox_msgs::EsfINS gps_esf_ins_;
 };
 
 }  // namespace RobotLocalization
