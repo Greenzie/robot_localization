@@ -854,7 +854,9 @@ namespace RobotLocalization
         request.geo_pose.position.longitude = gps_meas.longitude;
         request.geo_pose.position.altitude = gps_meas.altitude;
         tf2::Quaternion quat;
-        quat.setRPY(0.0, 0.0, msg->heading * 1e-5 * PI / 180.0);
+        double nav_pvt_heading_rad = msg->headVeh * 1e-5 * PI / 180.0;  // Vehicle heading
+        double enu_heading_rad = PI / 2.0 - nav_pvt_heading_rad;
+        quat.setRPY(0.0, 0.0, enu_heading_rad);
         request.geo_pose.orientation = tf2::toMsg(quat);
         robot_localization::SetDatum::Response response;
         datumCallback(request, response);
@@ -923,6 +925,11 @@ namespace RobotLocalization
       {
         nav_msgs::Odometry gps_odom;
 
+        tf2::Quaternion orientation_quat;
+        double nav_pvt_heading_rad = msg->headVeh * 1e-5 * PI / 180.0;  // Vehicle heading
+        double enu_heading_rad = PI / 2.0 - nav_pvt_heading_rad;
+        orientation_quat.setRPY(0.0, 0.0, enu_heading_rad);
+
         // Handle the transform if required
         if (publish_transform_)
         {
@@ -953,8 +960,7 @@ namespace RobotLocalization
           // Now transform the transformed_cartesian_gps_pose to map
           gps_odom = cartesianToMap(transformed_cartesian_gps_pose);
           // Orientation
-          quat.setRPY(0.0, 0.0, msg->heading * 1e-5 * PI / 180.0);
-          gps_odom.pose.pose.orientation = tf2::toMsg(quat);
+          gps_odom.pose.pose.orientation = tf2::toMsg(orientation_quat);
           // Now, gps_odom is in the correct frame for the offsets and orientation.
           //  Use this information to create the odom to base_link transformation
           transform_stamped_odom_base_footprint_.header.frame_id = "odom";
@@ -998,10 +1004,10 @@ namespace RobotLocalization
             gps_esf_ins_.iTOW - msg->iTOW;
           if(itow_diff < ins_timeout_ms_)
           {
-            // X
+            // X - yAngRate due to incorrect internal transform
             if((gps_esf_ins_.bitfield0 & ublox_msgs::EsfINS::BITFIELD0_X_ANG_RATE_VALID) > 0)
             {
-              gps_odom.twist.twist.angular.x = static_cast<float>(gps_esf_ins_.xAngRate) / 1e3;
+              gps_odom.twist.twist.angular.x = static_cast<float>(gps_esf_ins_.yAngRate) / 1e3;
               // TODO: Guess for now
               gps_odom.twist.covariance[21] = pow(0.1, 2);  // (0.1 rad/s)^2 - don't know rotation rate
             }
@@ -1009,10 +1015,10 @@ namespace RobotLocalization
             {
               gps_odom.twist.covariance[21] = pow(TAU, 2);  // (2 rad/s)^2 - don't know rotation rate
             }
-            // Y
+            // Y - xAngRate due to incorrect internal transform
             if((gps_esf_ins_.bitfield0 & ublox_msgs::EsfINS::BITFIELD0_Y_ANG_RATE_VALID) > 0)
             {
-              gps_odom.twist.twist.angular.y = static_cast<float>(gps_esf_ins_.yAngRate) / 1e3;
+              gps_odom.twist.twist.angular.y = static_cast<float>(gps_esf_ins_.xAngRate) / 1e3;
               // TODO: Guess for now
               gps_odom.twist.covariance[28] = pow(0.1, 2);  // (0.1 rad/s)^2 - don't know rotation rate
             }
@@ -1020,10 +1026,10 @@ namespace RobotLocalization
             {
               gps_odom.twist.covariance[28] = pow(TAU, 2);  // (2 rad/s)^2 - don't know rotation rate
             }
-            // Z
+            // Z - inverted due to incorrect internal transform
             if((gps_esf_ins_.bitfield0 & ublox_msgs::EsfINS::BITFIELD0_Z_ANG_RATE_VALID) > 0)
             {
-              gps_odom.twist.twist.angular.z = static_cast<float>(gps_esf_ins_.zAngRate) / 1e3;
+              gps_odom.twist.twist.angular.z = -static_cast<float>(gps_esf_ins_.zAngRate) / 1e3;
               // TODO: Guess for now
               gps_odom.twist.covariance[35] = pow(0.1, 2);  // (0.1 rad/s)^2 - don't know rotation rate
             }
@@ -1037,9 +1043,7 @@ namespace RobotLocalization
           gps_odom.twist.covariance[28] = pow(TAU, 2);  // (2 rad/s)^2 - don't know rotation rate
           gps_odom.twist.covariance[35] = pow(TAU, 2);  // (2 rad/s)^2 - don't know rotation rate
           // Orientation and orientation covariance
-          tf2::Quaternion quat;
-          quat.setRPY(0.0, 0.0, msg->heading * 1e-5 * PI / 180.0);
-          gps_odom.pose.pose.orientation = tf2::toMsg(quat);
+          gps_odom.pose.pose.orientation = tf2::toMsg(orientation_quat);
           gps_odom.pose.covariance[35] = pow(msg->headAcc * 1e-5 * PI / 180.0, 2);  // Heading accuracy in deg^2
 
           // Publish as though this were the filter
