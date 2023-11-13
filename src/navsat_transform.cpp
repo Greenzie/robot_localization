@@ -45,6 +45,7 @@ namespace RobotLocalization
 {
   NavSatTransform::NavSatTransform(ros::NodeHandle nh, ros::NodeHandle nh_priv) :
     use_nav_pvt_(false),
+    ned_to_enu_nav_pvt_(false),
     broadcast_cartesian_transform_(false),
     broadcast_cartesian_transform_as_parent_frame_(false),
     gps_updated_(false),
@@ -190,6 +191,8 @@ namespace RobotLocalization
       nh_priv.param("base_link_frame", base_link_frame_id_, std::string(""));  // Default to none if not set
       // Whether we're publshing the world_frame->base_link_frame transform
       nh_priv.param("publish_tf", publish_transform_, false);
+      // NED to ENU transform
+      nh_priv.param("ned_to_enu_nav_pvt", ned_to_enu_nav_pvt_, false);
       // Transform future dating
       double offsetTmp;
       nh_priv.param("transform_time_offset", offsetTmp, 0.0);
@@ -855,7 +858,11 @@ namespace RobotLocalization
         request.geo_pose.position.altitude = gps_meas.altitude;
         tf2::Quaternion quat;
         double nav_pvt_heading_rad = msg->headVeh * 1e-5 * PI / 180.0;  // Vehicle heading
-        double enu_heading_rad = PI / 2.0 - nav_pvt_heading_rad;
+        double enu_heading_rad = nav_pvt_heading_rad;
+        if(ned_to_enu_nav_pvt_)
+        {
+          enu_heading_rad = PI / 2.0 - nav_pvt_heading_rad;
+        }
         quat.setRPY(0.0, 0.0, enu_heading_rad);
         request.geo_pose.orientation = tf2::toMsg(quat);
         robot_localization::SetDatum::Response response;
@@ -927,7 +934,11 @@ namespace RobotLocalization
 
         tf2::Quaternion orientation_quat;
         double nav_pvt_heading_rad = msg->headVeh * 1e-5 * PI / 180.0;  // Vehicle heading
-        double enu_heading_rad = PI / 2.0 - nav_pvt_heading_rad;
+        double enu_heading_rad = nav_pvt_heading_rad;
+        if(ned_to_enu_nav_pvt_)
+        {
+          enu_heading_rad = PI / 2.0 - nav_pvt_heading_rad;
+        }
         orientation_quat.setRPY(0.0, 0.0, enu_heading_rad);
 
         // Handle the transform if required
@@ -1007,7 +1018,9 @@ namespace RobotLocalization
             // X - yAngRate due to incorrect internal transform
             if((gps_esf_ins_.bitfield0 & ublox_msgs::EsfINS::BITFIELD0_X_ANG_RATE_VALID) > 0)
             {
-              gps_odom.twist.twist.angular.x = static_cast<float>(gps_esf_ins_.yAngRate) / 1e3;
+              gps_odom.twist.twist.angular.x = (ned_to_enu_nav_pvt_) ?
+                static_cast<float>(gps_esf_ins_.yAngRate) / 1e3 :
+                static_cast<float>(gps_esf_ins_.xAngRate) / 1e3;
               // TODO: Guess for now
               gps_odom.twist.covariance[21] = pow(0.1, 2);  // (0.1 rad/s)^2 - don't know rotation rate
             }
@@ -1018,7 +1031,9 @@ namespace RobotLocalization
             // Y - xAngRate due to incorrect internal transform
             if((gps_esf_ins_.bitfield0 & ublox_msgs::EsfINS::BITFIELD0_Y_ANG_RATE_VALID) > 0)
             {
-              gps_odom.twist.twist.angular.y = static_cast<float>(gps_esf_ins_.xAngRate) / 1e3;
+              gps_odom.twist.twist.angular.y = (ned_to_enu_nav_pvt_) ?
+                static_cast<float>(gps_esf_ins_.xAngRate) / 1e3 :
+                static_cast<float>(gps_esf_ins_.yAngRate) / 1e3;
               // TODO: Guess for now
               gps_odom.twist.covariance[28] = pow(0.1, 2);  // (0.1 rad/s)^2 - don't know rotation rate
             }
@@ -1029,7 +1044,9 @@ namespace RobotLocalization
             // Z - inverted due to incorrect internal transform
             if((gps_esf_ins_.bitfield0 & ublox_msgs::EsfINS::BITFIELD0_Z_ANG_RATE_VALID) > 0)
             {
-              gps_odom.twist.twist.angular.z = -static_cast<float>(gps_esf_ins_.zAngRate) / 1e3;
+              gps_odom.twist.twist.angular.z = (ned_to_enu_nav_pvt_) ?
+                -static_cast<float>(gps_esf_ins_.zAngRate) / 1e3 :
+                static_cast<float>(gps_esf_ins_.zAngRate) / 1e3;
               // TODO: Guess for now
               gps_odom.twist.covariance[35] = pow(0.1, 2);  // (0.1 rad/s)^2 - don't know rotation rate
             }

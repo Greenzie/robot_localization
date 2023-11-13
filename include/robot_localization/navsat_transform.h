@@ -198,6 +198,10 @@ class NavSatTransform
     //!
     bool use_nav_pvt_;
 
+    //! @brief Whether to transform the NavPVT data to ENU from NED
+    //!
+    bool ned_to_enu_nav_pvt_;
+
     //! @brief Whether or not we broadcast the cartesian transform
     //!
     bool broadcast_cartesian_transform_;
