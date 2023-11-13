@@ -980,7 +980,7 @@ namespace RobotLocalization
 
           transform_stamped_odom_base_footprint_.transform.translation.x = gps_odom.pose.pose.position.x;
           transform_stamped_odom_base_footprint_.transform.translation.y = gps_odom.pose.pose.position.y;
-          transform_stamped_odom_base_footprint_.transform.translation.z = gps_odom.pose.pose.position.z;
+          transform_stamped_odom_base_footprint_.transform.translation.z = 0.0;  // gps_odom.pose.pose.position.z;
 
           transform_stamped_odom_base_footprint_.transform.rotation.w = gps_odom.pose.pose.orientation.w;
           transform_stamped_odom_base_footprint_.transform.rotation.x = gps_odom.pose.pose.orientation.x;
@@ -996,6 +996,8 @@ namespace RobotLocalization
           // Include the rest of the information
           gps_odom.header.frame_id = world_frame_id_;
           gps_odom.child_frame_id = base_link_frame_id_;  // Typically handled by the filter
+
+          gps_odom.pose.pose.position.z = 0.0;  // Zero this out
           
           // Check whether velocity should be negative in child frame
           if((abs(msg->heading - msg->headVeh) * 1e-5) > 90.0)
