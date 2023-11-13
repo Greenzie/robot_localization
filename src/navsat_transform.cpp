@@ -861,7 +861,7 @@ namespace RobotLocalization
         double enu_heading_rad = nav_pvt_heading_rad;
         if(ned_to_enu_nav_pvt_)
         {
-          enu_heading_rad = PI / 2.0 - nav_pvt_heading_rad;
+          enu_heading_rad = PI - nav_pvt_heading_rad;
         }
         quat.setRPY(0.0, 0.0, enu_heading_rad);
         request.geo_pose.orientation = tf2::toMsg(quat);
@@ -937,7 +937,7 @@ namespace RobotLocalization
         double enu_heading_rad = nav_pvt_heading_rad;
         if(ned_to_enu_nav_pvt_)
         {
-          enu_heading_rad = PI / 2.0 - nav_pvt_heading_rad;
+          enu_heading_rad = PI - nav_pvt_heading_rad;
         }
         orientation_quat.setRPY(0.0, 0.0, enu_heading_rad);
 
