@@ -1905,7 +1905,9 @@ namespace RobotLocalization
                   boost::bind(&RosFilter<T>::imuMagnetometerValidityCallback, this, _1,
                     dynamic_correction_topic), ros::VoidPtr(),
                     ros::TransportHints().tcpNoDelay(nodelayImu)));
-              imuDataValidityPubMap_[dynamic_correction_topic] = nhLocal_.advertise<robot_localization::ImuBiasValidity>(dynamic_correction_topic+"/bias_estimator_validity", 20);
+              imuDataValidityPubMap_[dynamic_correction_topic + "_roll"] = nhLocal_.advertise<std_msgs::Bool>(dynamic_correction_topic + "/bias_estimator_validity_roll", 20);
+              imuDataValidityPubMap_[dynamic_correction_topic + "_pitch"] = nhLocal_.advertise<std_msgs::Bool>(dynamic_correction_topic + "/bias_estimator_validity_pitch", 20);
+              imuDataValidityPubMap_[dynamic_correction_topic + "_yaw"] = nhLocal_.advertise<std_msgs::Bool>(dynamic_correction_topic + "/bias_estimator_validity_yaw", 20);
 
               // Subscribe to resets as well
               topicSubs_.push_back(
@@ -3494,11 +3496,15 @@ namespace RobotLocalization
           }
 
           // publish validity of axis based on whether bias estimator updated the bias
-          robot_localization::ImuBiasValidity estimator_validity_msg;
-          estimator_validity_msg.roll = is_bias_valid[0];
-          estimator_validity_msg.pitch =  is_bias_valid[1];
-          estimator_validity_msg.yaw =  is_bias_valid[2];
-          imuDataValidityPubMap_[topicName].publish(estimator_validity_msg);
+          std_msgs::Bool estimator_validity_msg;
+          estimator_validity_msg.data = is_bias_valid[0];
+          imuDataValidityPubMap_[topicName + "_roll"].publish(estimator_validity_msg);
+
+          estimator_validity_msg.data = is_bias_valid[1];
+          imuDataValidityPubMap_[topicName + "_pitch"].publish(estimator_validity_msg);
+
+          estimator_validity_msg.data = is_bias_valid[2];
+          imuDataValidityPubMap_[topicName + "_yaw"].publish(estimator_validity_msg);
 
           if(can_update == true)
           {

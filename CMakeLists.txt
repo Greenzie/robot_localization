@@ -62,12 +62,6 @@ roslint_cpp()
 ###################################
 ## catkin specific configuration ##
 ###################################
-# Generate messages in the 'msg' folder
-add_message_files(
-  DIRECTORY msg
-  FILES
-    ImuBiasValidity.msg
-)
 
 add_service_files(
   FILES
