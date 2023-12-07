@@ -40,7 +40,6 @@
 
 #include <robot_localization/SetPose.h>
 #include <robot_localization/ToggleFilterProcessing.h>
-#include <robot_localization/ImuBiasValidity.h>
 
 #include <ros/ros.h>
 #include <std_msgs/Float64.h>
