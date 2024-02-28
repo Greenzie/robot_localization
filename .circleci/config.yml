@@ -1,0 +1,55 @@
+version: 2.1
+
+workflows:
+  version: 2
+  pushbuild:
+    jobs:
+      - debian_build
+      - deploy:
+          filters:
+            branches:
+              only:
+                - noetic
+          requires:
+            - debian_build
+
+jobs:
+  debian_build:
+    docker:
+      - image: greenzie/debianize-experimental:focal-noetic
+        auth:
+          username: $DOCKERHUB_GREENZIE_USERNAME
+          password: $DOCKERHUB_GREENZIE_PASSWORD
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: "Generate Changelogs"
+          command: greenzie-release changelog -r "${ROS_DISTRO}"
+      - run:
+          name: "Package debs (debuild)"
+          command: GITHUB_WORKSPACE="$PWD" greenzie-debianize all
+      - store_artifacts:
+          path: /debians
+      - persist_to_workspace:
+          root: /debians
+          paths:
+            - '*'
+
+  deploy:
+    docker:
+      - image: greenzie/aptly:3.19.1-focal-noetic
+        auth:
+          username: $DOCKERHUB_GREENZIE_USERNAME
+          password: $DOCKERHUB_GREENZIE_PASSWORD
+    resource_class: small
+    steps:
+      - add_ssh_keys
+      - attach_workspace:
+          at: /debians
+      - run:
+          name: Deploy to aptly.greenzie.com
+          environment:
+            SERVER_HOSTNAME: aptly.greenzie.com
+          command: |
+            aptly repo deploy -r experimental -n "${CIRCLE_BUILD_NUM}" -p "/debians"
