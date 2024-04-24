@@ -1,5 +1,3 @@
- - builder: sphinx
-   sphinx_root_dir: doc
  - builder: doxygen
    output_dir: api
    file_patterns: '*.cpp *.h *.dox *.md'
