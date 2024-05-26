@@ -1,55 +1,50 @@
 version: 2.1
 
+orbs:
+  greenzie: greenzie/build_and_publish_debs@0.0.2
+
 workflows:
   version: 2
   pushbuild:
     jobs:
-      - debian_build
-      - deploy:
+      # Build jobs
+      - greenzie/debian_build:
+          name: "amd_debian_build"
+          platform: amd64
+          executor: greenzie/debianize_amd64
+
+      - greenzie/debian_build:
+          name: "arm64_debian_build"
+          platform: arm64
+          executor: greenzie/debianize_arm64
+
+      # Deployment jobs
+      - greenzie/deploy:
+          name: "deploy_amd64_greenzie"
           filters:
             branches:
               only:
                 - noetic
           requires:
-            - debian_build
+            - amd_debian_build
 
-jobs:
-  debian_build:
-    docker:
-      - image: greenzie/debianize-experimental:focal-noetic
-        auth:
-          username: $DOCKERHUB_GREENZIE_USERNAME
-          password: $DOCKERHUB_GREENZIE_PASSWORD
-    resource_class: small
-    steps:
-      - checkout
-      - run:
-          name: "Generate Changelogs"
-          command: greenzie-release changelog -r "${ROS_DISTRO}"
-      - run:
-          name: "Package debs (debuild)"
-          command: GITHUB_WORKSPACE="$PWD" greenzie-debianize all
-      - store_artifacts:
-          path: /debians
-      - persist_to_workspace:
-          root: /debians
-          paths:
-            - '*'
+      - greenzie/deploy:
+          name: "deploy_arm64_greenzie"
+          architecture: arm64
+          filters:
+            branches:
+              only:
+                - noetic
+          requires:
+            - arm64_debian_build
 
-  deploy:
-    docker:
-      - image: greenzie/aptly:3.19.1-focal-noetic
-        auth:
-          username: $DOCKERHUB_GREENZIE_USERNAME
-          password: $DOCKERHUB_GREENZIE_PASSWORD
-    resource_class: small
-    steps:
-      - add_ssh_keys
-      - attach_workspace:
-          at: /debians
-      - run:
-          name: Deploy to aptly.greenzie.com
-          environment:
-            SERVER_HOSTNAME: aptly.greenzie.com
-          command: |
-            aptly repo deploy -r experimental -n "${CIRCLE_BUILD_NUM}" -p "/debians"
+      - greenzie/deploy:
+          name: "deploy_all_bobcat"
+          server_hostname: bobcat
+          filters:
+            branches:
+              only:
+                - noetic
+          requires:
+            - arm64_debian_build
+            - amd_debian_build
