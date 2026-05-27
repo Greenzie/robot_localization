@@ -81,6 +81,20 @@ struct Measurement
   // measurements.
   std::string topicName_;
 
+  // Whether to scale this measurement's heading-state correction gain as a
+  // function of vehicle speed.
+  bool speedDependentHeadingGain_;
+
+  // Speed [m/s] below which the heading correction gain is held at
+  // headingGainAtLowSpeed_.
+  double headingGainLowSpeedMps_;
+
+  // Speed [m/s] above which the heading correction gain is 1.0.
+  double headingGainHighSpeedMps_;
+
+  // Heading correction gain applied at or below headingGainLowSpeedMps_.
+  double headingGainAtLowSpeed_;
+
   // This defines which variables within this measurement
   // actually get passed into the filter. std::vector<bool>
   // is generally frowned upon, so we use ints.
@@ -109,7 +123,11 @@ struct Measurement
     mahalanobisThresh_(std::numeric_limits<double>::max()),
     mahalanobisThreshInit_(std::numeric_limits<double>::max()),
     time_(0.0),
-    topicName_("")
+    topicName_(""),
+    speedDependentHeadingGain_(false),
+    headingGainLowSpeedMps_(0.0),
+    headingGainHighSpeedMps_(0.0),
+    headingGainAtLowSpeed_(1.0)
   {
   }
 };

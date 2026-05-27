@@ -761,6 +761,13 @@ template<class T> class RosFilter
     //!
     std::map<std::string, SourceData> sourceData_;
 
+    //! @brief Per-topic speed-dependent heading gain settings
+    //!
+    std::map<std::string, bool> speedDependentHeadingGainMap_;
+    std::map<std::string, double> headingGainLowSpeedMpsMap_;
+    std::map<std::string, double> headingGainHighSpeedMpsMap_;
+    std::map<std::string, double> headingGainAtLowSpeedMap_;
+
     //! @brief Holds information about data sources to use as the state. key is the data source, val is time of request
     //!
     std::map<std::string, double> sourceDataAsStateMap_;
