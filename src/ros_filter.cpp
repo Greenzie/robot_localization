@@ -374,12 +374,26 @@ namespace RobotLocalization
     meas->publishMahalanobisDistance_ = publishMahalanobisDistance;
     meas->mahalanobisThresh_ = mahalanobisThresh;
     meas->mahalanobisThreshInit_ = mahalanobisThreshInit;
-    if (speedDependentHeadingGainMap_.count(topicName) > 0)
+    const auto it = speedDependentHeadingGainMap_.find(topicName);
+    if (it != speedDependentHeadingGainMap_.end())
     {
-      meas->speedDependentHeadingGain_ = speedDependentHeadingGainMap_[topicName];
-      meas->headingGainLowSpeedMps_ = headingGainLowSpeedMpsMap_[topicName];
-      meas->headingGainHighSpeedMps_ = headingGainHighSpeedMpsMap_[topicName];
-      meas->headingGainAtLowSpeed_ = headingGainAtLowSpeedMap_[topicName];
+      const auto itLow = headingGainLowSpeedMpsMap_.find(topicName);
+      const auto itHigh = headingGainHighSpeedMpsMap_.find(topicName);
+      const auto itGain = headingGainAtLowSpeedMap_.find(topicName);
+
+      if (itLow != headingGainLowSpeedMpsMap_.end() &&
+          itHigh != headingGainHighSpeedMpsMap_.end() &&
+          itGain != headingGainAtLowSpeedMap_.end())
+      {
+        meas->speedDependentHeadingGain_ = it->second;
+        meas->headingGainLowSpeedMps_ = itLow->second;
+        meas->headingGainHighSpeedMps_ = itHigh->second;
+        meas->headingGainAtLowSpeed_ = itGain->second;
+      }
+      else
+      {
+        ROS_WARN_STREAM_THROTTLE(5.0, "Speed-dependent heading gain settings missing for " << topicName);
+      }
     }
     meas->latestControl_ = latestControl_;
     meas->latestControlTime_ = latestControlTime_.toSec();
