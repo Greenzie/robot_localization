@@ -106,6 +106,12 @@ ekf_se_map:
   odom1_nodelay: true
   odom1_differential: false
   odom1_relative: false
+  # [ADVANCED] Speed-dependent heading gain — reduces heading influence from GPS-derived pose at low speeds.
+  # See ekf_template.yaml for full parameter descriptions.
+  # odom1_pose_speed_dependent_heading_gain: false
+  # odom1_pose_heading_gain_low_speed_mps: 0.5
+  # odom1_pose_heading_gain_high_speed_mps: 1.5
+  # odom1_pose_heading_gain_at_low_speed: 0.1
 
   imu0: imu/data
   imu0_config: [false, false, false,
@@ -163,4 +169,3 @@ navsat_transform:
   publish_filtered_gps: true
   use_odometry_yaw: false
   wait_for_datum: false
-

@@ -120,6 +120,7 @@ struct Measurement
 
   Measurement() :
     latestControlTime_(0.0),
+    publishMahalanobisDistance_(false),
     mahalanobisThresh_(std::numeric_limits<double>::max()),
     mahalanobisThreshInit_(std::numeric_limits<double>::max()),
     time_(0.0),
