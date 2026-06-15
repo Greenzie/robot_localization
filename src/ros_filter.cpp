@@ -377,15 +377,14 @@ namespace RobotLocalization
     const auto it = headingGainSettingsMap_.find(topicName);
     if (it != headingGainSettingsMap_.end())
     {
-        meas->isSpeedDependentHeadingGainEnabled_ = it->second.isEnabled;
-        meas->headingGainLowSpeedMps_ = it->second.lowSpeedMps;
-        meas->headingGainHighSpeedMps_ = it->second.highSpeedMps;
-        meas->headingGainAtLowSpeed_ = it->second.gainAtLowSpeed;
-      }
-      else
-      {
-        ROS_WARN_STREAM_THROTTLE(5.0, "Speed-dependent heading gain settings missing for " << topicName);
-      }
+      meas->isSpeedDependentHeadingGainEnabled_ = it->second.isEnabled;
+      meas->headingGainLowSpeedMps_ = it->second.lowSpeedMps;
+      meas->headingGainHighSpeedMps_ = it->second.highSpeedMps;
+      meas->headingGainAtLowSpeed_ = it->second.gainAtLowSpeed;
+    }
+    else
+    {
+      ROS_WARN_STREAM_THROTTLE(5.0, "Speed-dependent heading gain settings missing for " << topicName);
     }
     meas->latestControl_ = latestControl_;
     meas->latestControlTime_ = latestControlTime_.toSec();
