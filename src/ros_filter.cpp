@@ -374,21 +374,13 @@ namespace RobotLocalization
     meas->publishMahalanobisDistance_ = publishMahalanobisDistance;
     meas->mahalanobisThresh_ = mahalanobisThresh;
     meas->mahalanobisThreshInit_ = mahalanobisThreshInit;
-    const auto it = speedDependentHeadingGainMap_.find(topicName);
-    if (it != speedDependentHeadingGainMap_.end())
+    const auto it = headingGainSettingsMap_.find(topicName);
+    if (it != headingGainSettingsMap_.end())
     {
-      const auto itLow = headingGainLowSpeedMpsMap_.find(topicName);
-      const auto itHigh = headingGainHighSpeedMpsMap_.find(topicName);
-      const auto itGain = headingGainAtLowSpeedMap_.find(topicName);
-
-      if (itLow != headingGainLowSpeedMpsMap_.end() &&
-          itHigh != headingGainHighSpeedMpsMap_.end() &&
-          itGain != headingGainAtLowSpeedMap_.end())
-      {
-        meas->speedDependentHeadingGain_ = it->second;
-        meas->headingGainLowSpeedMps_ = itLow->second;
-        meas->headingGainHighSpeedMps_ = itHigh->second;
-        meas->headingGainAtLowSpeed_ = itGain->second;
+        meas->isSpeedDependentHeadingGainEnabled_ = it->second.isEnabled;
+        meas->headingGainLowSpeedMps_ = it->second.lowSpeedMps;
+        meas->headingGainHighSpeedMps_ = it->second.highSpeedMps;
+        meas->headingGainAtLowSpeed_ = it->second.gainAtLowSpeed;
       }
       else
       {
@@ -1296,10 +1288,28 @@ namespace RobotLocalization
         nhLocal_.param(odomTopicName + std::string("_pose_heading_gain_at_low_speed"),
                  poseHeadingGainAtLowSpeed,
                  1.0);
-        speedDependentHeadingGainMap_[odomTopicName + "_pose"] = poseSpeedDependentHeadingGain;
-        headingGainLowSpeedMpsMap_[odomTopicName + "_pose"] = poseHeadingGainLowSpeedMps;
-        headingGainHighSpeedMpsMap_[odomTopicName + "_pose"] = poseHeadingGainHighSpeedMps;
-        headingGainAtLowSpeedMap_[odomTopicName + "_pose"] = poseHeadingGainAtLowSpeed;
+        
+        // Validate heading gain settings
+        if (poseSpeedDependentHeadingGain)
+        {
+          if (poseHeadingGainAtLowSpeed < 0.0 || poseHeadingGainAtLowSpeed > 1.0)
+          {
+            ROS_WARN_STREAM("Heading gain at low speed for " << odomTopicName << " is " << 
+              poseHeadingGainAtLowSpeed << ", which is outside [0, 1]. Clamping to valid range.");
+            poseHeadingGainAtLowSpeed = std::max(0.0, std::min(1.0, poseHeadingGainAtLowSpeed));
+          }
+          if (poseHeadingGainLowSpeedMps > poseHeadingGainHighSpeedMps)
+          {
+            ROS_WARN_STREAM("Low speed threshold (" << poseHeadingGainLowSpeedMps << " m/s) is greater than "
+              "high speed threshold (" << poseHeadingGainHighSpeedMps << " m/s) for " << odomTopicName << 
+              ". Check your configuration.");
+          }
+        }
+        
+        headingGainSettingsMap_[odomTopicName + "_pose"] = {poseSpeedDependentHeadingGain,
+                                                             poseHeadingGainLowSpeedMps,
+                                                             poseHeadingGainHighSpeedMps,
+                                                             poseHeadingGainAtLowSpeed};
 
         // Check for twist rejection threshold
         if (publishMahalanobisDistance)
@@ -1491,10 +1501,28 @@ namespace RobotLocalization
         nhLocal_.param(poseTopicName + std::string("_heading_gain_at_low_speed"),
                  poseHeadingGainAtLowSpeed,
                  1.0);
-        speedDependentHeadingGainMap_[poseTopicName] = poseSpeedDependentHeadingGain;
-        headingGainLowSpeedMpsMap_[poseTopicName] = poseHeadingGainLowSpeedMps;
-        headingGainHighSpeedMpsMap_[poseTopicName] = poseHeadingGainHighSpeedMps;
-        headingGainAtLowSpeedMap_[poseTopicName] = poseHeadingGainAtLowSpeed;
+        
+        // Validate heading gain settings
+        if (poseSpeedDependentHeadingGain)
+        {
+          if (poseHeadingGainAtLowSpeed < 0.0 || poseHeadingGainAtLowSpeed > 1.0)
+          {
+            ROS_WARN_STREAM("Heading gain at low speed for " << poseTopicName << " is " << 
+              poseHeadingGainAtLowSpeed << ", which is outside [0, 1]. Clamping to valid range.");
+            poseHeadingGainAtLowSpeed = std::max(0.0, std::min(1.0, poseHeadingGainAtLowSpeed));
+          }
+          if (poseHeadingGainLowSpeedMps > poseHeadingGainHighSpeedMps)
+          {
+            ROS_WARN_STREAM("Low speed threshold (" << poseHeadingGainLowSpeedMps << " m/s) is greater than "
+              "high speed threshold (" << poseHeadingGainHighSpeedMps << " m/s) for " << poseTopicName << 
+              ". Check your configuration.");
+          }
+        }
+        
+        headingGainSettingsMap_[poseTopicName] = {poseSpeedDependentHeadingGain,
+                                                   poseHeadingGainLowSpeedMps,
+                                                   poseHeadingGainHighSpeedMps,
+                                                   poseHeadingGainAtLowSpeed};
 
         int poseQueueSize = 1;
         nhLocal_.param(poseTopicName + "_queue_size", poseQueueSize, 1);

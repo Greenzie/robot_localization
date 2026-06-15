@@ -83,7 +83,7 @@ struct Measurement
 
   // Whether to scale this measurement's heading-state correction gain as a
   // function of vehicle speed.
-  bool speedDependentHeadingGain_;
+  bool isSpeedDependentHeadingGainEnabled_;
 
   // Speed [m/s] below which the heading correction gain is held at
   // headingGainAtLowSpeed_.
@@ -125,7 +125,7 @@ struct Measurement
     mahalanobisThreshInit_(std::numeric_limits<double>::max()),
     time_(0.0),
     topicName_(""),
-    speedDependentHeadingGain_(false),
+    isSpeedDependentHeadingGainEnabled_(false),
     headingGainLowSpeedMps_(0.0),
     headingGainHighSpeedMps_(0.0),
     headingGainAtLowSpeed_(1.0)

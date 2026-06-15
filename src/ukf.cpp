@@ -293,7 +293,7 @@ namespace RobotLocalization
     prepareCorrect(measurement, updateIndices, innovationSubset, measurementCovarianceSubset,
                    kalmanGainSubset, invInnovCov, predictedMeasCovar);
 
-    if (measurement.speedDependentHeadingGain_)
+    if (measurement.isSpeedDependentHeadingGainEnabled_)
     {
       const double lowSpeed = measurement.headingGainLowSpeedMps_;
       const double highSpeed = measurement.headingGainHighSpeedMps_;
