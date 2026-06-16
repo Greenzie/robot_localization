@@ -147,10 +147,10 @@ odom1_relative: true
 odom1_queue_size: 2
 odom1_pose_rejection_threshold: 2
 odom1_twist_rejection_threshold: 0.2
-# odom1_pose_speed_dependent_heading_gain: false
-# odom1_pose_heading_gain_low_speed_mps: 0.5
-# odom1_pose_heading_gain_high_speed_mps: 1.5
-# odom1_pose_heading_gain_at_low_speed: 0.1
+odom1_pose_speed_dependent_heading_gain: false
+odom1_pose_heading_gain_low_speed_mps: 0.5
+odom1_pose_heading_gain_high_speed_mps: 1.5
+odom1_pose_heading_gain_at_low_speed: 0.1
 odom1_nodelay: false
 
 pose0: example/pose
