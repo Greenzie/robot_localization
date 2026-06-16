@@ -125,6 +125,16 @@ odom0_relative: false
 odom0_pose_rejection_threshold: 5
 odom0_twist_rejection_threshold: 1
 
+# [ADVANCED] Speed-dependent heading gain reduces the influence of heading from this pose source at low speeds,
+# where heading measurements from position-based sensors (e.g., GPS) are typically unreliable. When enabled, the
+# Kalman gain for heading is scaled by a gain interpolated between odom0_pose_heading_gain_at_low_speed
+# (applied at or below odom0_pose_heading_gain_low_speed_mps) and 1.0 (applied at or above
+# odom0_pose_heading_gain_high_speed_mps). Only has effect when yaw is included in the sensor config.
+# odom0_pose_speed_dependent_heading_gain: false
+# odom0_pose_heading_gain_low_speed_mps: 0.5   # Speed at or below which the low-speed gain is fully applied (m/s)
+# odom0_pose_heading_gain_high_speed_mps: 1.5  # Speed at or above which gain returns to 1.0 (m/s)
+# odom0_pose_heading_gain_at_low_speed: 0.1    # Kalman gain scale factor at low speed; lower = less heading influence
+
 # Further input parameter examples
 odom1: example/another_odom
 odom1_config: [false, false, true,
@@ -137,6 +147,10 @@ odom1_relative: true
 odom1_queue_size: 2
 odom1_pose_rejection_threshold: 2
 odom1_twist_rejection_threshold: 0.2
+odom1_pose_speed_dependent_heading_gain: false
+odom1_pose_heading_gain_low_speed_mps: 0.5
+odom1_pose_heading_gain_high_speed_mps: 1.5
+odom1_pose_heading_gain_at_low_speed: 0.1
 odom1_nodelay: false
 
 pose0: example/pose
@@ -149,6 +163,11 @@ pose0_differential: true
 pose0_relative: false
 pose0_queue_size: 5
 pose0_rejection_threshold: 2  # Note the difference in parameter name
+# [ADVANCED] Speed-dependent heading gain for pose topics (note: no '_pose_' infix, unlike odom topics)
+# pose0_speed_dependent_heading_gain: false
+# pose0_heading_gain_low_speed_mps: 0.5
+# pose0_heading_gain_high_speed_mps: 1.5
+# pose0_heading_gain_at_low_speed: 0.1
 pose0_nodelay: false
 
 twist0: example/twist

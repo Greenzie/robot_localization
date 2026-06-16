@@ -133,6 +133,14 @@ struct SourceData
   double last_bias_s_{-std::numeric_limits<double>::infinity()};  // Never set initially
 };
 
+struct HeadingGainSettings
+{
+  bool isEnabled{false};
+  double lowSpeedMps{0.0};
+  double highSpeedMps{0.0};
+  double gainAtLowSpeed{1.0};
+};
+
 typedef std::priority_queue<MeasurementPtr, std::vector<MeasurementPtr>, Measurement> MeasurementQueue;
 typedef std::deque<MeasurementPtr> MeasurementHistoryDeque;
 typedef std::deque<FilterStatePtr> FilterStateHistoryDeque;
@@ -760,6 +768,10 @@ template<class T> class RosFilter
     //! @brief Holds information about data sources
     //!
     std::map<std::string, SourceData> sourceData_;
+
+    //! @brief Per-topic speed-dependent heading gain settings
+    //!
+    std::map<std::string, HeadingGainSettings> headingGainSettingsMap_;
 
     //! @brief Holds information about data sources to use as the state. key is the data source, val is time of request
     //!

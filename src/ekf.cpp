@@ -35,6 +35,7 @@
 
 #include <XmlRpcException.h>
 
+#include <cmath>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -182,6 +183,28 @@ namespace RobotLocalization
     measurementCovarianceSubset.setZero();
     prepareCorrect(measurement, updateIndices, innovationSubset, measurementCovarianceSubset,
                    kalmanGainSubset, hphrInv, stateToMeasurementSubset);
+
+    if (measurement.isSpeedDependentHeadingGainEnabled_)
+    {
+      const double lowSpeed = measurement.headingGainLowSpeedMps_;
+      const double highSpeed = measurement.headingGainHighSpeedMps_;
+      const double lowSpeedGain = std::fmin(1.0, std::fmax(0.0, measurement.headingGainAtLowSpeed_));
+      const double speed = std::hypot(state_(StateMemberVx), state_(StateMemberVy));
+      double headingGainScale = 1.0;
+
+      if (highSpeed > lowSpeed)
+      {
+        const double speedAlpha = std::fmin(1.0, std::fmax(0.0, (speed - lowSpeed) / (highSpeed - lowSpeed)));
+        headingGainScale = lowSpeedGain + (1.0 - lowSpeedGain) * speedAlpha;
+      }
+      else if (speed <= lowSpeed)
+      {
+        headingGainScale = lowSpeedGain;
+      }
+
+      kalmanGainSubset.row(StateMemberYaw) *= headingGainScale;
+      kalmanGainSubset.row(StateMemberVyaw) *= headingGainScale;
+    }
 
     double sqMahalanobis = getSquaredMahalanobisDistance(innovationSubset, hphrInv);
     FB_DEBUG("Squared Mahalanobis is: " << sqMahalanobis << "\n" <<
@@ -413,4 +436,3 @@ namespace RobotLocalization
   }
 
 }  // namespace RobotLocalization
-
