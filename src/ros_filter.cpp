@@ -382,10 +382,6 @@ namespace RobotLocalization
       meas->headingGainHighSpeedMps_ = it->second.highSpeedMps;
       meas->headingGainAtLowSpeed_ = it->second.gainAtLowSpeed;
     }
-    else
-    {
-      ROS_WARN_STREAM_THROTTLE(5.0, "Speed-dependent heading gain settings missing for " << topicName);
-    }
     meas->latestControl_ = latestControl_;
     meas->latestControlTime_ = latestControlTime_.toSec();
     measurementQueue_.push(meas);
