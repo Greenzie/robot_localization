@@ -58,14 +58,6 @@ workflows:
             - amd_debian_build
             - arm64_debian_build
 
-      - greenzie/debian_deploy_experimental:
-          name: "deploy_all_bobcat"
-          context: GREENZIE
-          server_hostname: bobcat
-          requires:
-            - amd_debian_build
-            - arm64_debian_build
-
       - greenzie/debian_deploy_experimental_ssh:
           name: "deploy_to_public_experimental"
           context: GREENZIE
