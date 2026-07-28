@@ -68,8 +68,10 @@ workflows:
             - arm64_debian_build
 
   manualdeploy-public:
-    when: << pipeline.parameters.deploy_public >>
-    jobs:
+    when:
+      and:
+        - << pipeline.parameters.deploy_public >>
+        - not: << pipeline.parameters.manual-deploy >>
       - greenzie/debian_build_simple:
           name: "amd_debian_build"
           context: GREENZIE
