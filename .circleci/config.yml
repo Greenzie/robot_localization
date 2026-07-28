@@ -1,17 +1,24 @@
 version: 2.1
 
 orbs:
-  greenzie: greenzie/build_and_publish_debs@0.1.1
+  greenzie: greenzie/build_and_publish_debs@0.1.3
 
 parameters:
   manual-deploy:
+    type: boolean
+    default: false
+  deploy_public:
+    description: "Deploy only to greenzie-public-experimental (skips greenzie-experimental). For testing the public channel."
     type: boolean
     default: false
 
 workflows:
   version: 2
   pushbuild:
-    unless: << pipeline.parameters.manual-deploy >>
+    when:
+      and:
+        - not: << pipeline.parameters.manual-deploy >>
+        - not: << pipeline.parameters.deploy_public >>
     jobs:
       - greenzie/debian_build_simple:
           name: "amd_debian_build"
@@ -51,10 +58,39 @@ workflows:
             - amd_debian_build
             - arm64_debian_build
 
-      - greenzie/debian_deploy_experimental:
-          name: "deploy_all_bobcat"
+      - greenzie/debian_deploy_experimental_ssh:
+          name: "deploy_to_public_experimental"
           context: GREENZIE
-          server_hostname: bobcat
+          repo_name: experimental-greenzie-public-focal-main
+          channel: greenzie-public-experimental
+          requires:
+            - amd_debian_build
+            - arm64_debian_build
+
+  manualdeploy-public:
+    when:
+      and:
+        - << pipeline.parameters.deploy_public >>
+        - not: << pipeline.parameters.manual-deploy >>
+      - greenzie/debian_build_simple:
+          name: "amd_debian_build"
+          context: GREENZIE
+          platform: amd64
+          executor: greenzie/debianize_amd64
+          generate_changelog: true
+
+      - greenzie/debian_build_simple:
+          name: "arm64_debian_build"
+          context: GREENZIE
+          platform: arm64
+          executor: greenzie/debianize_arm64
+          generate_changelog: true
+
+      - greenzie/debian_deploy_experimental_ssh:
+          name: "deploy_to_public_experimental"
+          context: GREENZIE
+          repo_name: experimental-greenzie-public-focal-main
+          channel: greenzie-public-experimental
           requires:
             - amd_debian_build
             - arm64_debian_build
