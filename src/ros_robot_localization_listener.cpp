@@ -44,9 +44,9 @@
 #include "robot_localization/filter_common.hpp"
 #include "robot_localization/ros_filter_utilities.hpp"
 
-#include "tf2/LinearMath/Matrix3x3.h"
-#include "tf2/LinearMath/Quaternion.h"
-#include "tf2/time.h"
+#include "tf2/LinearMath/Matrix3x3.hpp"
+#include "tf2/LinearMath/Quaternion.hpp"
+#include "tf2/time.hpp"
 #include "tf2_eigen/tf2_eigen.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "yaml-cpp/yaml.h"
@@ -70,9 +70,17 @@ RosRobotLocalizationListener::RosRobotLocalizationListener(
   rclcpp::SubscriptionOptions options)
 : qos1_(1),
   qos10_(10),
+// wp/l2-lyrical-build: message_filters 7.x (Lyrical) takes rclcpp::QoS and the queue size first;
+// 4.11 (Jazzy) takes rmw_qos_profile_t and the queue size last. Same QoS and queue size on both.
+#ifdef RL_MESSAGE_FILTERS_RCLCPP_QOS
+  odom_sub_(node, "odom/filtered", qos1_, options),
+  accel_sub_(node, "acceleration/filtered", qos1_, options),
+  sync_(10u, odom_sub_, accel_sub_),
+#else
   odom_sub_(node, "odom/filtered", qos1_.get_rmw_qos_profile(), options),
   accel_sub_(node, "acceleration/filtered", qos1_.get_rmw_qos_profile(), options),
   sync_(odom_sub_, accel_sub_, 10u),
+#endif
   node_clock_(node->get_node_clock_interface()->get_clock()),
   node_logger_(node->get_node_logging_interface()),
   base_frame_id_(""),

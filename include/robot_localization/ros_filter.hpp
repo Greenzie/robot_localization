@@ -34,6 +34,7 @@
 
 #include <deque>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <queue>
@@ -52,13 +53,19 @@
 #include "geometry_msgs/msg/twist_with_covariance_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "robot_localization/filter_common.hpp"
 #include "robot_localization/filter_state.hpp"
 #include "robot_localization/measurement.hpp"
+#include "robot_localization/ros_filter_bias_estimator.hpp"
 #include "robot_localization/srv/toggle_filter_processing.hpp"
 #include "robot_localization/srv/set_pose.hpp"
 #include "sensor_msgs/msg/imu.hpp"
+#include "std_msgs/msg/bool.hpp"
+#include "std_msgs/msg/empty.hpp"
+#include "std_msgs/msg/float64.hpp"
+#include "std_msgs/msg/string.hpp"
 #include "std_srvs/srv/empty.hpp"
-#include "tf2/LinearMath/Transform.h"
+#include "tf2/LinearMath/Transform.hpp"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_broadcaster.h"
 #include "tf2_ros/transform_listener.h"
@@ -73,11 +80,17 @@ struct CallbackData
     const std::vector<bool> & update_vector, const int update_sum,
     const bool differential, const bool relative,
     const bool pose_use_child_frame,
-    const double rejection_threshold)
+    const bool publish_mahalanobis_distance,
+    const double rejection_threshold,
+    const double rejection_threshold_init,
+    const double rejection_threshold_trusted)
   : topic_name_(topic_name), update_vector_(update_vector),
     update_sum_(update_sum), differential_(differential),
     relative_(relative), pose_use_child_frame_(pose_use_child_frame),
-    rejection_threshold_(rejection_threshold) {}
+    publish_mahalanobis_distance_(publish_mahalanobis_distance),
+    rejection_threshold_(rejection_threshold),
+    rejection_threshold_init_(rejection_threshold_init),
+    rejection_threshold_trusted_(rejection_threshold_trusted) {}
 
   std::string topic_name_;
   std::vector<bool> update_vector_;
@@ -85,7 +98,44 @@ struct CallbackData
   bool differential_;
   bool relative_;
   bool pose_use_child_frame_;
+  // Greenzie: publish the squared Mahalanobis distance of this source
+  bool publish_mahalanobis_distance_;
   double rejection_threshold_;
+  // Greenzie: threshold for the measurement that initializes the filter
+  double rejection_threshold_init_;
+  // Greenzie: threshold while the source is trusted (<topic>/trusted)
+  double rejection_threshold_trusted_;
+};
+
+// Greenzie: per-source state set by the <topic>/trusted and <topic>/bias inputs
+struct SourceData
+{
+  SourceData()
+  {
+    bias_pose_.resize(STATE_SIZE);
+    bias_pose_.setZero();
+    bias_twist_.resize(STATE_SIZE);
+    bias_twist_.setZero();
+    bias_acceleration_.resize(STATE_SIZE);
+    bias_acceleration_.setZero();
+  }
+
+  bool trusted_{false};
+  double last_trusted_s_{-std::numeric_limits<double>::infinity()};  // Never trusted initially
+  Eigen::VectorXd bias_pose_;
+  Eigen::VectorXd bias_twist_;
+  Eigen::VectorXd bias_acceleration_;
+  bool bias_valid_{false};  // Invalid initially
+  double last_bias_s_{-std::numeric_limits<double>::infinity()};  // Never set initially
+};
+
+// Greenzie: per-topic speed-dependent heading gain settings
+struct HeadingGainSettings
+{
+  bool is_enabled{false};
+  double low_speed_mps{0.0};
+  double high_speed_mps{0.0};
+  double gain_at_low_speed{1.0};
 };
 
 using MeasurementQueue =
@@ -177,7 +227,9 @@ public:
     const Eigen::VectorXd & measurement,
     const Eigen::MatrixXd & measurement_covariance,
     const std::vector<bool> & update_vector,
+    const bool publish_mahalanobis_distance,
     const double mahalanobis_thresh,
+    const double mahalanobis_thresh_init,
     const rclcpp::Time & time);
 
   //! @brief Method for zeroing out 3D variables within measurements
@@ -236,6 +288,74 @@ public:
     const CallbackData & pose_callback_data,
     const CallbackData & twist_callback_data,
     const CallbackData & accel_callback_data);
+
+  //! @brief Greenzie: receives odometry from one EKF in order to dynamically
+  //! correct the orientation input (magnetometer) of another EKF
+  //! @param[in] msg - The odometry message
+  //! @param[in] topic_name - The topic name of the corrected IMU pose data
+  //!
+  void imuDynamicCorrectionCallback(
+    const nav_msgs::msg::Odometry::SharedPtr msg,
+    const std::string & topic_name);
+
+  //! @brief Greenzie: receives magnetometer validity for the dynamic correction
+  //! @param[in] msg - The validity
+  //! @param[in] topic_name - The topic name of the corrected IMU pose data
+  //!
+  void imuMagnetometerValidityCallback(
+    const std_msgs::msg::Bool::SharedPtr msg,
+    const std::string & topic_name);
+
+  //! @brief Greenzie: resets a dynamic correction (bias) estimator
+  //! @param[in] msg - Unused
+  //! @param[in] topic_name - The topic name of the corrected IMU pose data
+  //!
+  void biasEstimatorResetCallback(
+    const std_msgs::msg::Empty::SharedPtr msg,
+    const std::string & topic_name);
+
+  //! @brief Greenzie: receives whether a source is trusted, which selects its
+  //! rejection threshold (<topic>_rejection_threshold_trusted)
+  //! @param[in] msg - Whether the source is trusted
+  //! @param[in] topic_names - Source names, (odom|pose|twist|imu)[0-9]_<part>
+  //!
+  void trustedSensorCallback(
+    const std_msgs::msg::Bool::SharedPtr msg,
+    const std::vector<std::string> & topic_names);
+
+  //! @brief Greenzie: request to use the next measurements of a source
+  //! (odom|pose|twist|imu)[0-9] as the filter state
+  //! (set_measurement_as_state_timeout_s)
+  //! @param[in] msg - The data source name
+  //!
+  void setMeasurementAsStateCallback(const std_msgs::msg::String::SharedPtr msg);
+
+  //! @brief Greenzie: callbacks for <topic>/bias inputs; the prepared
+  //! measurement is stored and added to every following measurement of the
+  //! source while valid (bias_timeout)
+  //!
+  void biasOdometryCallback(
+    const nav_msgs::msg::Odometry::SharedPtr msg,
+    const std::string & topic_name,
+    const CallbackData & pose_callback_data,
+    const CallbackData & twist_callback_data);
+  void biasImuCallback(
+    const sensor_msgs::msg::Imu::SharedPtr msg,
+    const std::string & topic_name,
+    const CallbackData & pose_callback_data,
+    const CallbackData & twist_callback_data,
+    const CallbackData & accel_callback_data);
+  void biasPoseCallback(
+    const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg,
+    const CallbackData & callback_data, const std::string & target_frame,
+    const std::string & pose_source_frame, const bool imu_data);
+  void biasTwistCallback(
+    const geometry_msgs::msg::TwistWithCovarianceStamped::SharedPtr msg,
+    const CallbackData & callback_data, const std::string & target_frame);
+  void biasAccelerationCallback(
+    const sensor_msgs::msg::Imu::SharedPtr msg,
+    const CallbackData & callback_data,
+    const std::string & target_frame);
 
   //! @brief Processes all measurements in the measurement queue, in temporal
   //! order
@@ -448,6 +568,7 @@ protected:
     const std::string & topic_name,
     const std::string & target_frame,
     const bool relative,
+    const bool remove_gravitational_acceleration,
     std::vector<bool> & update_vector,
     Eigen::VectorXd & measurement,
     Eigen::MatrixXd & measurement_covariance);
@@ -504,6 +625,44 @@ protected:
   //! @brief Whether we publish the acceleration
   //!
   bool publish_acceleration_;
+
+  //! @brief Greenzie: whether we publish rejected measurement topics
+  //! (measurements/rejected)
+  bool publish_rejected_measurements_;
+
+  //! @brief Greenzie: timeout for the trusted state of a source (< 0: never)
+  double trusted_timeout_;
+
+  //! @brief Greenzie: timeout for bias information (< 0: never)
+  double bias_timeout_;
+
+  //! @brief Greenzie: how long a set_measurement_as_state request is used
+  double set_measurement_as_state_timeout_s_;
+
+  //! @brief Greenzie: dynamic orientation correction data, per IMU pose input
+  std::map<std::string, RosFilterBiasEstimator> imu_dynamic_correction_data_;
+
+  //! @brief Greenzie: trusted and bias state per data source
+  std::map<std::string, SourceData> source_data_;
+
+  //! @brief Greenzie: speed-dependent heading gain settings per data source
+  std::map<std::string, HeadingGainSettings> heading_gain_settings_map_;
+
+  //! @brief Greenzie: sources to use as the state; value is the request time
+  //! (seconds)
+  std::map<std::string, double> source_data_as_state_map_;
+
+  //! @brief Greenzie: squared Mahalanobis distance publishers per source
+  //! (~/<source>_(pose|twist|acceleration)/squared_mahalanobis_dist)
+  std::map<std::string, rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr>
+  mahalanobis_distance_pub_map_;
+
+  //! @brief Greenzie: bias estimator validity publishers per IMU source and axis
+  std::map<std::string, rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr>
+  imu_data_validity_pub_map_;
+
+  //! @brief Greenzie: rejected measurement topics publisher
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr rejected_measurements_pub_;
 
   //! @brief Whether we publish the transform from the world_frame to the
   //! base_link_frame

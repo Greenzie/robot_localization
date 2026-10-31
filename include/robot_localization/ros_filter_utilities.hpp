@@ -38,13 +38,19 @@
 
 #include "Eigen/Dense"
 #include "rclcpp/time.hpp"
-#include "tf2/LinearMath/Quaternion.h"
-#include "tf2/LinearMath/Transform.h"
-#include "tf2/LinearMath/Vector3.h"
+#include "tf2/LinearMath/Quaternion.hpp"
+#include "tf2/LinearMath/Transform.hpp"
+#include "tf2/LinearMath/Vector3.hpp"
 #include "tf2_ros/buffer.h"
 
+// Greenzie: debug output is also written in verbose mode; RF_VERBOSE only in verbose mode.
 #define RF_DEBUG(msg) \
-  if (filter_.getDebug()) { \
+  if (filter_.getDebug() || filter_.getVerbose()) { \
+    debug_stream_ << msg; \
+  }
+
+#define RF_VERBOSE(msg) \
+  if (filter_.getVerbose()) { \
     debug_stream_ << msg; \
   }
 

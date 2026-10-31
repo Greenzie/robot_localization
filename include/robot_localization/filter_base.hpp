@@ -33,7 +33,10 @@
 #ifndef ROBOT_LOCALIZATION__FILTER_BASE_HPP_
 #define ROBOT_LOCALIZATION__FILTER_BASE_HPP_
 
+#include <map>
 #include <ostream>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "Eigen/Dense"
@@ -78,6 +81,45 @@ public:
   virtual void correct(const Measurement & measurement) = 0;
 
   /**
+   * @brief Greenzie: finds the update indices for the given measurement
+   *
+   * @param[in] measurement - The measurement for which to get the update
+   * indices of the state
+   * @param[out] update_indices - The indices of the state to which this
+   * measurement applies (nan and inf values excluded)
+   */
+  void getUpdateIndices(
+    const Measurement & measurement,
+    std::vector<size_t> & update_indices);
+
+  /**
+   * @brief Greenzie: prepares the correction up to the outlier rejection,
+   * after which correct() integrates the prepared correction
+   *
+   * @param[in] measurement - The measurement to prepare to fuse with the state
+   * estimate
+   * @param[in] update_indices - The indexes of the measurement that will be
+   * used to update the state
+   * @param[out] innovation_subset - The innovation which applies to the subset
+   * of the state that matches the measurement
+   * @param[out] measurement_covariance_subset - The subset of the covariance
+   * that applies to this measurement
+   * @param[out] kalman_gain_subset - The Kalman gain which applies to the
+   * subset of the state that matches the measurement
+   * @param[out] innov_mat_inv - Used for computing the Kalman gain and checking
+   * the Mahalanobis distance (named more precisely in derived classes)
+   * @param[out] aux_mat - Auxiliary matrix (named more precisely in derived
+   * classes)
+   */
+  virtual void prepareCorrect(
+    const Measurement & measurement,
+    const std::vector<size_t> & update_indices,
+    Eigen::VectorXd & innovation_subset,
+    Eigen::MatrixXd & measurement_covariance_subset,
+    Eigen::MatrixXd & kalman_gain_subset, Eigen::MatrixXd & innov_mat_inv,
+    Eigen::MatrixXd & aux_mat) = 0;
+
+  /**
    * @brief Returns the control vector currently being used
    *
    * @return The control vector
@@ -97,6 +139,13 @@ public:
    * @return True if in debug mode, false otherwise
    */
   bool getDebug();
+
+  /**
+   * @brief Greenzie: gets the value of the verbose_ variable.
+   *
+   * @return True if in verbose mode, false otherwise
+   */
+  bool getVerbose();
 
   /**
    * @brief Gets the estimate error covariance
@@ -213,6 +262,19 @@ public:
   void setDebug(const bool debug, std::ostream * out_stream = NULL);
 
   /**
+   * @brief Greenzie: sets the filter into verbose mode
+   *
+   * NOTE: this will generate a lot of debug output to the provided stream. The
+   * value must be a pointer to a valid ostream object.
+   *
+   * @param[in] verbose - Whether or not to place the filter in verbose mode
+   * @param[in] out_stream - If verbose is true, then this must have a valid
+   * pointer. If the pointer is invalid, the filter will not enter verbose
+   * mode. If verbose is false, out_stream is ignored.
+   */
+  void setVerbose(const bool verbose, std::ostream * out_stream = nullptr);
+
+  /**
    * @brief Enables dynamic process noise covariance calculation
    * @param[in] dynamic_process_noise_covariance - Whether or not to compute
    * dynamic process noise covariance matrices
@@ -261,12 +323,47 @@ public:
   void setState(const Eigen::VectorXd & state);
 
   /**
+   * @brief Greenzie: manually sets the filter's state using a measurement's
+   * relevant fields
+   *
+   * @param[in] measurement - The measurement whose fields become the filter's
+   * current state
+   */
+  void setStateFromMeasurement(const Measurement & measurement);
+
+  /**
    * @brief Ensures a given time delta is valid (helps with bag file playback
    * issues)
    *
    * @param[in, out] delta - The time delta to validate
    */
   void validateDelta(rclcpp::Duration & delta);
+
+  /**
+   * @brief Greenzie: returns a copy of any rejected measurement topics and
+   * clears the internal vector
+   *
+   * @param[out] rejected - rejected measurement topics since the last call
+   */
+  void getRejectedMeasurementTopics(std::vector<std::string> & rejected);
+
+  /**
+   * @brief Greenzie: set whether to save rejected measurement topics
+   *
+   * @param[in] save - Whether to save rejected measurement topics
+   */
+  void setSaveRejectedMeasurementTopics(bool save);
+
+  /**
+   * @brief Greenzie: returns the Mahalanobis distance map and clears it.
+   *
+   * @return the latest topic-to-squared-Mahalanobis-distance map (maximum per
+   * periodic update).
+   */
+  std::map<std::string, double> getCopyAndClearMahalanobisDistanceMap()
+  {
+    return std::move(measurement_map_periodic_max_squared_mahalanobis_distance_);
+  }
 
 protected:
   /**
@@ -299,17 +396,35 @@ protected:
   /**
    * @brief Tests if innovation is within N-sigmas of covariance. Returns true
    * if passed the test.
-   * @param[in] innovation - The difference between the measurement and the
-   * state
-   * @param[in] innovation_covariance - The innovation error
+   * Greenzie: takes the squared Mahalanobis distance, computed once by
+   * getSquaredMahalanobisDistance (it is also published).
+   * @param[in] squared_mahalanobis - The squared Mahalanobis distance
    * @param[in] n_sigmas - Number of standard deviations that are considered
    * acceptable
    */
   virtual bool
   checkMahalanobisThreshold(
-    const Eigen::VectorXd & innovation,
-    const Eigen::MatrixXd & innovation_covariance,
+    const double squared_mahalanobis,
     const double n_sigmas);
+
+  /**
+   * @brief Greenzie: squared Mahalanobis distance of an innovation
+   * @param[in] innovation - The difference between the measurement and the
+   * state
+   * @param[in] innovation_covariance - The inverse innovation covariance
+   */
+  virtual double getSquaredMahalanobisDistance(
+    const Eigen::VectorXd & innovation,
+    const Eigen::MatrixXd & innovation_covariance);
+
+  /**
+   * @brief Greenzie: keeps the maximum squared Mahalanobis distance of a
+   * measurement's topic since the last periodic update (published by the ROS
+   * filter when publish_mahalanobis_distance is set for the topic)
+   */
+  void recordSquaredMahalanobisDistance(
+    const Measurement & measurement,
+    const double squared_mahalanobis);
 
   /**
    * @brief Converts the control term to an acceleration to be applied in the
@@ -479,11 +594,34 @@ protected:
    */
   Eigen::MatrixXd transfer_function_jacobian_;
 
+  /**
+   * @brief Greenzie: maximum squared Mahalanobis distance per topic since the
+   * last periodic update (ROS publish)
+   */
+  std::map<std::string, double>
+  measurement_map_periodic_max_squared_mahalanobis_distance_;
+
+  /**
+   * @brief Greenzie: rejected measurement topics since the last periodic
+   * update (ROS publish)
+   */
+  std::vector<std::string> rejected_measurement_topics_;
+
+  /**
+   * @brief Greenzie: whether the filter saves the rejected measurement topics
+   */
+  bool save_rejected_measurement_topics_;
+
 private:
   /**
    * @brief Whether or not the filter is in debug mode
    */
   bool debug_;
+
+  /**
+   * @brief Greenzie: whether or not the filter is in verbose mode
+   */
+  bool verbose_;
 };
 
 }  // namespace robot_localization

@@ -56,8 +56,13 @@ namespace robot_localization
 struct Measurement
 {
   Measurement()
-  : time_(0), mahalanobis_thresh_(std::numeric_limits<double>::max()),
-    latest_control_time_(0), topic_name_(""), latest_control_()
+  : time_(0), publish_mahalanobis_distance_(false),
+    mahalanobis_thresh_(std::numeric_limits<double>::max()),
+    mahalanobis_thresh_init_(std::numeric_limits<double>::max()),
+    latest_control_time_(0), topic_name_(""),
+    is_speed_dependent_heading_gain_enabled_(false),
+    heading_gain_low_speed_mps_(0.0), heading_gain_high_speed_mps_(0.0),
+    heading_gain_at_low_speed_(1.0), latest_control_()
   {
   }
 
@@ -65,8 +70,15 @@ struct Measurement
   // execution, but any will do)
   rclcpp::Time time_;
 
+  // Greenzie: always publish the Mahalanobis distance for this measurement
+  bool publish_mahalanobis_distance_;
+
   // The Mahalanobis distance threshold in number of sigmas
   double mahalanobis_thresh_;
+
+  // Greenzie: the Mahalanobis distance threshold for initialization in number
+  // of sigmas
+  double mahalanobis_thresh_init_;
 
   // The time stamp of the most recent control term (needed for lagged data)
   rclcpp::Time latest_control_time_;
@@ -74,6 +86,21 @@ struct Measurement
   // The topic name for this measurement. Needed for capturing previous state
   // values for new measurements.
   std::string topic_name_;
+
+  // Greenzie: whether to scale this measurement's heading-state correction gain
+  // as a function of vehicle speed.
+  bool is_speed_dependent_heading_gain_enabled_;
+
+  // Greenzie: speed [m/s] below which the heading correction gain is held at
+  // heading_gain_at_low_speed_.
+  double heading_gain_low_speed_mps_;
+
+  // Greenzie: speed [m/s] above which the heading correction gain is 1.0.
+  double heading_gain_high_speed_mps_;
+
+  // Greenzie: heading correction gain applied at or below
+  // heading_gain_low_speed_mps_.
+  double heading_gain_at_low_speed_;
 
   // This defines which variables within this measurement actually get passed
   // into the filter. std::vector<bool> is generally frowned upon, so we use

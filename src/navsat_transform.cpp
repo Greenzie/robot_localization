@@ -50,10 +50,10 @@
 #include "robot_localization/srv/to_ll.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
-#include "tf2/LinearMath/Matrix3x3.h"
-#include "tf2/LinearMath/Quaternion.h"
-#include "tf2/LinearMath/Transform.h"
-#include "tf2/LinearMath/Vector3.h"
+#include "tf2/LinearMath/Matrix3x3.hpp"
+#include "tf2/LinearMath/Quaternion.hpp"
+#include "tf2/LinearMath/Transform.hpp"
+#include "tf2/LinearMath/Vector3.hpp"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
@@ -91,7 +91,11 @@ NavSatTransform::NavSatTransform(const rclcpp::NodeOptions & options)
   northp_(true),
   world_frame_id_("odom"),
   yaw_offset_(0.0),
-  zero_altitude_(false)
+  zero_altitude_(false),
+  origin_measurement_delay_(0),
+  origin_measurement_qty_to_avg_(1),
+  current_good_gps_count_(0),
+  current_delayed_gps_count_(0)
 {
   tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
   tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
@@ -113,6 +117,9 @@ NavSatTransform::NavSatTransform(const rclcpp::NodeOptions & options)
   use_local_cartesian_ = this->declare_parameter("use_local_cartesian", false);
   frequency = this->declare_parameter("frequency", frequency);
   delay = this->declare_parameter("delay", delay);
+  // Greenzie: averaged GPS origin
+  origin_measurement_delay_ = this->declare_parameter("origin_measurement_delay", 0);
+  origin_measurement_qty_to_avg_ = this->declare_parameter("origin_measurement_qty_to_avg", 1);
   transform_timeout = this->declare_parameter("transform_timeout", transform_timeout);
 
   transform_timeout_ = tf2::durationFromSec(transform_timeout);
@@ -653,7 +660,7 @@ void NavSatTransform::getRobotOriginCartesianPose(
   }
 }
 
-void NavSatTransform::getRobotOriginWorldPose(
+bool NavSatTransform::getRobotOriginWorldPose(
   const tf2::Transform & gps_odom_pose, tf2::Transform & robot_odom_pose,
   const rclcpp::Time & transform_time)
 {
@@ -695,6 +702,7 @@ void NavSatTransform::getRobotOriginWorldPose(
       "Will not remove offset of navsat device from robot's origin.",
       base_link_frame_id_.c_str(), gps_frame_id_.c_str());
   }
+  return can_transform;
 }
 
 void NavSatTransform::gpsFixCallback(
@@ -716,10 +724,43 @@ void NavSatTransform::gpsFixCallback(
     !std::isnan(msg->longitude));
 
   if (good_gps) {
-    // If we haven't computed the transform yet, then
-    // store this message as the initial GPS data to use
-    if (!transform_good_ && !use_manual_datum_) {
-      setTransformGps(msg);
+    // Greenzie: the origin is the average of origin_measurement_qty_to_avg_
+    // good fixes after skipping origin_measurement_delay_ of them; until then,
+    // fixes are not used.
+    sensor_msgs::msg::NavSatFix gps_meas;
+    if (transform_good_ || use_manual_datum_) {
+      RCLCPP_INFO_ONCE(this->get_logger(), "Begun using GPS fix data for cartesian coordinates.");
+      gps_meas = *msg;
+    } else if (!has_transform_gps_) {
+      // check has_transform_gps_ because we want to set the gps origin once
+      if (++current_delayed_gps_count_ < origin_measurement_delay_) {
+        return;
+      }
+
+      origin_llh_[0].push_back(msg->latitude);
+      origin_llh_[1].push_back(msg->longitude);
+      origin_llh_[2].push_back(msg->altitude);
+
+      if (++current_good_gps_count_ < origin_measurement_qty_to_avg_) {
+        return;
+      }
+      // we now have enough good gps measurements to calculate the origin
+      sensor_msgs::msg::NavSatFix gps_centroid = *msg;
+      double n = origin_llh_[0].size();
+      gps_centroid.latitude =
+        (1.0 / n) * std::accumulate(origin_llh_[0].begin(), origin_llh_[0].end(), 0.0);
+      gps_centroid.longitude =
+        (1.0 / n) * std::accumulate(origin_llh_[1].begin(), origin_llh_[1].end(), 0.0);
+      gps_centroid.altitude =
+        (1.0 / n) * std::accumulate(origin_llh_[2].begin(), origin_llh_[2].end(), 0.0);
+      gps_meas = gps_centroid;
+      // If we haven't computed the transform yet, then store this message as
+      // the initial GPS data to use
+      setTransformGps(std::make_shared<sensor_msgs::msg::NavSatFix>(gps_meas));
+    } else {
+      // !transform_good_ and has_transform_gps_
+      RCLCPP_WARN_STREAM(this->get_logger(), "Missing transform_good_ yet has_transform_gps_.");
+      return;
     }
 
     double cartesian_x = {};
@@ -728,14 +769,14 @@ void NavSatTransform::gpsFixCallback(
 
     if (use_local_cartesian_) {
       gps_local_cartesian_.Forward(
-        msg->latitude, msg->longitude, msg->altitude,
+        gps_meas.latitude, gps_meas.longitude, gps_meas.altitude,
         cartesian_x, cartesian_y, cartesian_z);
     } else {
       int zone_tmp;
       bool northp_tmp;
       try {
         GeographicLib::UTMUPS::Forward(
-          msg->latitude, msg->longitude, zone_tmp, northp_tmp,
+          gps_meas.latitude, gps_meas.longitude, zone_tmp, northp_tmp,
           cartesian_x, cartesian_y, utm_zone_);
       } catch (GeographicLib::GeographicErr const & e) {
         RCLCPP_ERROR_STREAM(this->get_logger(), e.what());
@@ -743,19 +784,30 @@ void NavSatTransform::gpsFixCallback(
       }
     }
 
-    latest_cartesian_pose_.setOrigin(tf2::Vector3(cartesian_x, cartesian_y, msg->altitude));
+    latest_cartesian_pose_.setOrigin(tf2::Vector3(cartesian_x, cartesian_y, gps_meas.altitude));
     latest_cartesian_covariance_.setZero();
 
     // Copy the measurement's covariance matrix so that we can rotate it later
     for (size_t i = 0; i < POSITION_SIZE; i++) {
       for (size_t j = 0; j < POSITION_SIZE; j++) {
         latest_cartesian_covariance_(i, j) =
-          msg->position_covariance[POSITION_SIZE * i + j];
+          gps_meas.position_covariance[POSITION_SIZE * i + j];
       }
     }
 
-    gps_update_time_ = msg->header.stamp;
+    gps_update_time_ = gps_meas.header.stamp;
     gps_updated_ = true;
+  } else if (!has_transform_gps_) {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), 15000,
+      "GNSS data used for origin is being reset due to a bad GNSS measurement.");
+    // gps not good so we reset the data used for the origin; not after
+    // has_transform_gps_, to avoid changing downstream gps/odometry solutions
+    current_good_gps_count_ = 0;
+    current_delayed_gps_count_ = 0;
+    origin_llh_[0].clear();
+    origin_llh_[1].clear();
+    origin_llh_[2].clear();
   }
 }
 
@@ -903,42 +955,43 @@ bool NavSatTransform::prepareGpsOdometry(nav_msgs::msg::Odometry * gps_odom)
     rclcpp::Time time(static_cast<double>(gps_odom->header.stamp.sec) +
       static_cast<double>(gps_odom->header.stamp.nanosec) /
       1000000000.0, RCL_ROS_TIME);
-    getRobotOriginWorldPose(transformed_cartesian_gps, transformed_cartesian_robot, time);
+    // Greenzie: only publish when the navsat offset could be removed
+    if (getRobotOriginWorldPose(transformed_cartesian_gps, transformed_cartesian_robot, time)) {
+      // Rotate the covariance as well
+      tf2::Matrix3x3 rot(cartesian_world_transform_.getRotation());
+      Eigen::MatrixXd rot_6d(POSE_SIZE, POSE_SIZE);
+      rot_6d.setIdentity();
 
-    // Rotate the covariance as well
-    tf2::Matrix3x3 rot(cartesian_world_transform_.getRotation());
-    Eigen::MatrixXd rot_6d(POSE_SIZE, POSE_SIZE);
-    rot_6d.setIdentity();
-
-    for (size_t rInd = 0; rInd < POSITION_SIZE; ++rInd) {
-      rot_6d(rInd, 0) = rot.getRow(rInd).getX();
-      rot_6d(rInd, 1) = rot.getRow(rInd).getY();
-      rot_6d(rInd, 2) = rot.getRow(rInd).getZ();
-      rot_6d(rInd + POSITION_SIZE, 3) = rot.getRow(rInd).getX();
-      rot_6d(rInd + POSITION_SIZE, 4) = rot.getRow(rInd).getY();
-      rot_6d(rInd + POSITION_SIZE, 5) = rot.getRow(rInd).getZ();
-    }
-
-    // Rotate the covariance
-    latest_cartesian_covariance_ =
-      rot_6d * latest_cartesian_covariance_.eval() * rot_6d.transpose();
-
-    // Now fill out the message. Set the orientation to the identity.
-    tf2::toMsg(transformed_cartesian_robot, gps_odom->pose.pose);
-    gps_odom->pose.pose.position.z =
-      (zero_altitude_ ? 0.0 : gps_odom->pose.pose.position.z);
-
-    // Copy the measurement's covariance matrix so that we can rotate it later
-    for (size_t i = 0; i < POSE_SIZE; i++) {
-      for (size_t j = 0; j < POSE_SIZE; j++) {
-        gps_odom->pose.covariance[POSE_SIZE * i + j] =
-          latest_cartesian_covariance_(i, j);
+      for (size_t rInd = 0; rInd < POSITION_SIZE; ++rInd) {
+        rot_6d(rInd, 0) = rot.getRow(rInd).getX();
+        rot_6d(rInd, 1) = rot.getRow(rInd).getY();
+        rot_6d(rInd, 2) = rot.getRow(rInd).getZ();
+        rot_6d(rInd + POSITION_SIZE, 3) = rot.getRow(rInd).getX();
+        rot_6d(rInd + POSITION_SIZE, 4) = rot.getRow(rInd).getY();
+        rot_6d(rInd + POSITION_SIZE, 5) = rot.getRow(rInd).getZ();
       }
-    }
 
-    // Mark this GPS as used
-    gps_updated_ = false;
-    new_data = true;
+      // Rotate the covariance
+      latest_cartesian_covariance_ =
+        rot_6d * latest_cartesian_covariance_.eval() * rot_6d.transpose();
+
+      // Now fill out the message. Set the orientation to the identity.
+      tf2::toMsg(transformed_cartesian_robot, gps_odom->pose.pose);
+      gps_odom->pose.pose.position.z =
+        (zero_altitude_ ? 0.0 : gps_odom->pose.pose.position.z);
+
+      // Copy the measurement's covariance matrix so that we can rotate it later
+      for (size_t i = 0; i < POSE_SIZE; i++) {
+        for (size_t j = 0; j < POSE_SIZE; j++) {
+          gps_odom->pose.covariance[POSE_SIZE * i + j] =
+            latest_cartesian_covariance_(i, j);
+        }
+      }
+
+      // Mark this GPS as used
+      gps_updated_ = false;
+      new_data = true;
+    }
   }
 
   return new_data;
@@ -981,7 +1034,7 @@ void NavSatTransform::setTransformGps(
   }
 
   RCLCPP_INFO(
-    this->get_logger(), "Datum (latitude, longitude, altitude) is (%0.2f, %0.2f, %0.2f)",
+    this->get_logger(), "Datum (latitude, longitude, altitude) is (%.16f, %.16f, %.16f)",
     msg->latitude, msg->longitude, msg->altitude);
   RCLCPP_INFO(
     this->get_logger(), "Datum %s coordinate is (%d %s, %0.2f, %0.2f)",

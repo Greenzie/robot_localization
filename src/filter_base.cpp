@@ -33,7 +33,11 @@
 #include "robot_localization/filter_base.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <iterator>
+#include <map>
 #include <ostream>
+#include <string>
 #include <vector>
 
 #include "angles/angles.h"
@@ -62,7 +66,8 @@ FilterBase::FilterBase()
   identity_(STATE_SIZE, STATE_SIZE),
   process_noise_covariance_(STATE_SIZE, STATE_SIZE),
   transfer_function_(STATE_SIZE, STATE_SIZE),
-  transfer_function_jacobian_(STATE_SIZE, STATE_SIZE), debug_(false)
+  transfer_function_jacobian_(STATE_SIZE, STATE_SIZE),
+  save_rejected_measurement_topics_(false), debug_(false), verbose_(false)
 {
   reset();
 }
@@ -163,6 +168,8 @@ const rclcpp::Time & FilterBase::getControlTime()
 
 bool FilterBase::getDebug() {return debug_;}
 
+bool FilterBase::getVerbose() {return verbose_;}
+
 const Eigen::MatrixXd & FilterBase::getEstimateErrorCovariance()
 {
   return estimate_error_covariance_;
@@ -192,9 +199,45 @@ const rclcpp::Duration & FilterBase::getSensorTimeout()
 
 const Eigen::VectorXd & FilterBase::getState() {return state_;}
 
+void FilterBase::getUpdateIndices(
+  const Measurement & measurement,
+  std::vector<size_t> & update_indices)
+{
+  for (size_t i = 0; i < measurement.update_vector_.size(); ++i) {
+    if (measurement.update_vector_[i]) {
+      // Handle nan and inf values in measurements
+      if (std::isnan(measurement.measurement_(i))) {
+        FB_VERBOSE("Value at index " << i << " was nan. Excluding from update.\n");
+      } else if (std::isinf(measurement.measurement_(i))) {
+        FB_VERBOSE("Value at index " << i << " was inf. Excluding from update.\n");
+      } else {
+        update_indices.push_back(i);
+      }
+    }
+  }
+}
+
+void FilterBase::recordSquaredMahalanobisDistance(
+  const Measurement & measurement,
+  const double squared_mahalanobis)
+{
+  if (!measurement.publish_mahalanobis_distance_) {
+    return;
+  }
+  // Useful if inspecting a measurement from a particular source, or on a
+  // specific dimension. Keeps the maximum per periodic update.
+  std::map<std::string, double> & distances =
+    measurement_map_periodic_max_squared_mahalanobis_distance_;
+  if (distances.find(measurement.topic_name_) == distances.end()) {
+    distances[measurement.topic_name_] = squared_mahalanobis;
+  }
+  double & distance = distances.at(measurement.topic_name_);
+  distance = std::max(distance, squared_mahalanobis);
+}
+
 void FilterBase::processMeasurement(const Measurement & measurement)
 {
-  FB_DEBUG(
+  FB_VERBOSE(
     "------ FilterBase::processMeasurement (" << measurement.topic_name_ <<
       ") ------\n");
 
@@ -226,26 +269,66 @@ void FilterBase::processMeasurement(const Measurement & measurement)
 
     correct(measurement);
   } else {
-    FB_DEBUG("First measurement. Initializing filter.\n");
+    // Greenzie: prepare the measurement in order to check the initialization
+    // Mahalanobis threshold (mahalanobis_thresh_init_) before using it as the
+    // initial state.
+    std::vector<size_t> update_indices;
+    getUpdateIndices(measurement, update_indices);
+    size_t update_size = update_indices.size();
+    Eigen::VectorXd innovation_subset(update_size);
+    Eigen::MatrixXd measurement_covariance_subset(update_size, update_size);
+    Eigen::MatrixXd kalman_gain_subset(STATE_SIZE, update_size);
+    Eigen::MatrixXd aux_mat(update_size, STATE_SIZE);
+    Eigen::MatrixXd innov_mat_inv;  // Sized by prepareCorrect
+    innovation_subset.setZero();
+    kalman_gain_subset.setZero();
+    measurement_covariance_subset.setZero();
+    aux_mat.setZero();
+    prepareCorrect(
+      measurement, update_indices, innovation_subset,
+      measurement_covariance_subset, kalman_gain_subset, innov_mat_inv,
+      aux_mat);
 
-    // Initialize the filter, but only with the values we're using
-    size_t measurement_length = measurement.update_vector_.size();
-    for (size_t i = 0; i < measurement_length; ++i) {
-      state_[i] = (measurement.update_vector_[i] ? measurement.measurement_[i] :
-        state_[i]);
-    }
+    const double squared_mahalanobis =
+      getSquaredMahalanobisDistance(innovation_subset, innov_mat_inv);
+    FB_DEBUG(
+      "Squared Mahalanobis is: " << squared_mahalanobis << "\n" <<
+        "Threshold is: " <<
+        measurement.mahalanobis_thresh_init_ * measurement.mahalanobis_thresh_init_ <<
+        "\n" << "Innovation is: " << innovation_subset << "\n" <<
+        "Innovation covariance is:\n" << innov_mat_inv << "\n");
+    recordSquaredMahalanobisDistance(measurement, squared_mahalanobis);
 
-    // Same for covariance
-    for (size_t i = 0; i < measurement_length; ++i) {
-      for (size_t j = 0; j < measurement_length; ++j) {
-        estimate_error_covariance_(i, j) =
-          (measurement.update_vector_[i] && measurement.update_vector_[j] ?
-          measurement.covariance_(i, j) :
-          estimate_error_covariance_(i, j));
+    if (checkMahalanobisThreshold(
+        squared_mahalanobis,
+        measurement.mahalanobis_thresh_init_))
+    {
+      FB_VERBOSE("First measurement. Initializing filter.\n");
+
+      // Initialize the filter, but only with the values we're using
+      size_t measurement_length = measurement.update_vector_.size();
+      for (size_t i = 0; i < measurement_length; ++i) {
+        state_[i] = (measurement.update_vector_[i] ? measurement.measurement_[i] :
+          state_[i]);
+      }
+
+      // Same for covariance
+      for (size_t i = 0; i < measurement_length; ++i) {
+        for (size_t j = 0; j < measurement_length; ++j) {
+          estimate_error_covariance_(i, j) =
+            (measurement.update_vector_[i] && measurement.update_vector_[j] ?
+            measurement.covariance_(i, j) :
+            estimate_error_covariance_(i, j));
+        }
+      }
+
+      initialized_ = true;
+    } else {
+      FB_VERBOSE("First measurement rejected - filter not initialized");
+      if (save_rejected_measurement_topics_) {
+        rejected_measurement_topics_.push_back(measurement.topic_name_);
       }
     }
-
-    initialized_ = true;
   }
 
   if (delta >= rclcpp::Duration(0, 0u)) {
@@ -259,7 +342,7 @@ void FilterBase::processMeasurement(const Measurement & measurement)
     last_measurement_time_ = measurement.time_;
   }
 
-  FB_DEBUG(
+  FB_VERBOSE(
     "------ /FilterBase::processMeasurement (" << measurement.topic_name_ <<
       ") ------\n");
 }
@@ -303,6 +386,20 @@ void FilterBase::setDebug(const bool debug, std::ostream * out_stream)
   }
 }
 
+void FilterBase::setVerbose(const bool verbose, std::ostream * out_stream)
+{
+  if (verbose) {
+    if (out_stream != nullptr) {
+      debug_stream_ = out_stream;
+      verbose_ = true;
+    } else {
+      verbose_ = false;
+    }
+  } else {
+    verbose_ = false;
+  }
+}
+
 void FilterBase::setUseDynamicProcessNoiseCovariance(
   const bool use_dynamic_process_noise_covariance)
 {
@@ -334,6 +431,32 @@ void FilterBase::setSensorTimeout(const rclcpp::Duration & sensor_timeout)
 }
 
 void FilterBase::setState(const Eigen::VectorXd & state) {state_ = state;}
+
+void FilterBase::setStateFromMeasurement(const Measurement & measurement)
+{
+  std::vector<size_t> update_indices;
+  // Initialize using the most recent state, then overwrite the measured fields
+  Eigen::VectorXd state(state_);
+  getUpdateIndices(measurement, update_indices);
+  for (size_t i : update_indices) {
+    state(i) = measurement.measurement_(i);
+  }
+  setState(state);
+}
+
+void FilterBase::getRejectedMeasurementTopics(std::vector<std::string> & rejected)
+{
+  rejected.clear();
+  std::copy(
+    rejected_measurement_topics_.begin(), rejected_measurement_topics_.end(),
+    std::back_inserter(rejected));
+  rejected_measurement_topics_.clear();
+}
+
+void FilterBase::setSaveRejectedMeasurementTopics(bool save)
+{
+  save_rejected_measurement_topics_ = save;
+}
 
 void FilterBase::validateDelta(rclcpp::Duration & /*delta*/)
 {
@@ -427,24 +550,23 @@ void FilterBase::wrapStateAngles()
 }
 
 bool FilterBase::checkMahalanobisThreshold(
-  const Eigen::VectorXd & innovation,
-  const Eigen::MatrixXd & innovation_covariance, const double n_sigmas)
+  const double squared_mahalanobis,
+  const double n_sigmas)
 {
-  double squared_mahalanobis =
-    innovation.dot(innovation_covariance * innovation);
   double threshold = n_sigmas * n_sigmas;
 
   if (squared_mahalanobis >= threshold) {
-    FB_DEBUG(
-      "Innovation mahalanobis distance test failed. Squared Mahalanobis is: " <<
-        squared_mahalanobis << "\nThreshold is: " << threshold << "\n" <<
-        "Innovation is: " << innovation << "\n" <<
-        "Innovation covariance is:\n" <<
-        innovation_covariance << "\n");
-
+    FB_DEBUG("Innovation mahalanobis distance test failed.\n");
     return false;
   }
-
+  FB_DEBUG("Innovation mahalanobis distance test passed.\n");
   return true;
+}
+
+double FilterBase::getSquaredMahalanobisDistance(
+  const Eigen::VectorXd & innovation,
+  const Eigen::MatrixXd & innovation_covariance)
+{
+  return innovation.dot(innovation_covariance * innovation);
 }
 }  // namespace robot_localization

@@ -26,6 +26,7 @@ find_package(nav_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(std_msgs REQUIRED)  # wp/l2-lyrical-build: was found transitively; now linked by name
 find_package(tf2 REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
@@ -74,6 +75,7 @@ add_library(
   src/navsat_transform.cpp
   src/robot_localization_estimator.cpp
   src/ros_filter.cpp
+  src/ros_filter_bias_estimator.cpp
   src/ros_filter_utilities.cpp
   src/ros_robot_localization_listener.cpp)
 
@@ -107,64 +109,57 @@ target_link_libraries(
   yaml-cpp::yaml-cpp
 )
 
-ament_target_dependencies(
+# wp/l2-lyrical-build: ament_target_dependencies() no longer exists in ROS 2 Lyrical; the same dependencies as
+# modern CMake targets (valid on Jazzy too). Plain signature, like the target_link_libraries calls above.
+# yaml_cpp_vendor only provides yaml-cpp::yaml-cpp, already linked above.
+target_link_libraries(
   ${library_name}
-  angles
-  diagnostic_msgs
-  diagnostic_updater
-  geographic_msgs
-  geometry_msgs
-  message_filters
-  nav_msgs
-  rclcpp
-  sensor_msgs
-  std_msgs
-  std_srvs
-  tf2
-  tf2_eigen
-  tf2_geometry_msgs
-  tf2_ros
-  yaml_cpp_vendor
+  angles::angles
+  ${diagnostic_msgs_TARGETS}
+  diagnostic_updater::diagnostic_updater
+  ${geographic_msgs_TARGETS}
+  ${geometry_msgs_TARGETS}
+  message_filters::message_filters
+  ${nav_msgs_TARGETS}
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+  ${std_msgs_TARGETS}
+  ${std_srvs_TARGETS}
+  tf2::tf2
+  tf2_eigen::tf2_eigen
+  tf2_geometry_msgs::tf2_geometry_msgs
+  tf2_ros::tf2_ros
 )
+
+# wp/l2-lyrical-build: message_filters changed its Subscriber/TimeSynchronizer constructors between 4.11 (Jazzy) and
+# 7.4 (Lyrical); see ros_robot_localization_listener.cpp. 7.0.0 is the major version seen on Lyrical, not the exact
+# version of the change.
+if(message_filters_VERSION VERSION_GREATER_EQUAL 7.0.0)
+  target_compile_definitions(${library_name} PRIVATE RL_MESSAGE_FILTERS_RCLCPP_QOS)
+endif()
 
 target_link_libraries(
   ekf_node
   ${library_name}
-)
-
-ament_target_dependencies(
-  ekf_node
-  rclcpp
+  rclcpp::rclcpp
 )
 
 target_link_libraries(
   ukf_node
   ${library_name}
-)
-
-ament_target_dependencies(
-  ukf_node
-  rclcpp
+  rclcpp::rclcpp
 )
 
 target_link_libraries(
   navsat_transform_node
   ${library_name}
-)
-
-ament_target_dependencies(
-  navsat_transform_node
-  rclcpp
+  rclcpp::rclcpp
 )
 
 target_link_libraries(
   robot_localization_listener_node
   ${library_name}
-)
-
-ament_target_dependencies(
-  robot_localization_listener_node
-  rclcpp
+  rclcpp::rclcpp
 )
 
 if(BUILD_TESTING)
@@ -192,11 +187,11 @@ if(BUILD_TESTING)
     GENERATE_RESULT_FOR_RETURN_CODE_ZERO
     TIMEOUT 300
     COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/test/test_filter_base_diagnostics_timestamps.launch.py"
-  WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" ENV ROS_DOMAIN_ID=202
   )
 
   #### EKF TESTS ######
-  ament_add_gtest(test_ekf test/test_ekf.cpp)
+  ament_add_gtest(test_ekf test/test_ekf.cpp ENV ROS_DOMAIN_ID=203)
   target_link_libraries(test_ekf ${library_name})
 
   rosidl_get_typesupport_target(cpp_typesupport_target "${PROJECT_NAME}" "rosidl_typesupport_cpp")
@@ -224,11 +219,11 @@ if(BUILD_TESTING)
     GENERATE_RESULT_FOR_RETURN_CODE_ZERO
     TIMEOUT 300
     COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/test/test_se_node_interfaces.launch.py"
-    ENV NODE_TYPE=ekf
+    ENV ROS_DOMAIN_ID=204 NODE_TYPE=ekf
   WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 
   #### UKF TESTS #####
-  ament_add_gtest(test_ukf test/test_ukf.cpp)
+  ament_add_gtest(test_ukf test/test_ukf.cpp ENV ROS_DOMAIN_ID=205)
   target_link_libraries(test_ukf ${library_name})
 
   rosidl_get_typesupport_target(cpp_typesupport_target "${PROJECT_NAME}" "rosidl_typesupport_cpp")
@@ -256,7 +251,7 @@ if(BUILD_TESTING)
     GENERATE_RESULT_FOR_RETURN_CODE_ZERO
     TIMEOUT 300
     COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/test/test_se_node_interfaces.launch.py"
-    ENV NODE_TYPE=ukf
+    ENV ROS_DOMAIN_ID=206 NODE_TYPE=ukf
   WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 
   #### DATA TESTS #####
@@ -288,7 +283,7 @@ if(BUILD_TESTING)
     GENERATE_RESULT_FOR_RETURN_CODE_ZERO
     TIMEOUT 100
     COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/test/test_robot_localization_estimator.launch.py"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" ENV ROS_DOMAIN_ID=207
   )
 
   #### NAVSAT CONVERSION TESTS ####
@@ -309,7 +304,7 @@ if(BUILD_TESTING)
     GENERATE_RESULT_FOR_RETURN_CODE_ZERO
     TIMEOUT 100
     COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/test/test_ros_robot_localization_listener.launch.py"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" ENV ROS_DOMAIN_ID=208
   )
 
   ament_cppcheck(LANGUAGE "c++")

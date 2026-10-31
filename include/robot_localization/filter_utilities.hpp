@@ -41,8 +41,15 @@
 #include "rclcpp/time.hpp"
 #include "std_msgs/msg/header.hpp"
 
+// Greenzie: debug output is also written in verbose mode; FB_VERBOSE only in
+// verbose mode (the fork moved the most frequent messages to verbose).
 #define FB_DEBUG(msg) \
-  if (getDebug()) { \
+  if (getDebug() || getVerbose()) { \
+    *debug_stream_ << msg; \
+  }
+
+#define FB_VERBOSE(msg) \
+  if (getVerbose()) { \
     *debug_stream_ << msg; \
   }
 

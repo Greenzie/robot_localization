@@ -33,6 +33,7 @@
 #include "robot_localization/ekf.hpp"
 
 #include <cmath>
+#include <iomanip>
 #include <vector>
 
 #include "angles/angles.h"
@@ -51,48 +52,17 @@ Ekf::Ekf()
 
 Ekf::~Ekf() {}
 
-void Ekf::correct(const Measurement & measurement)
+void Ekf::prepareCorrect(
+  const Measurement & measurement,
+  const std::vector<size_t> & update_indices,
+  Eigen::VectorXd & innovation_subset,
+  Eigen::MatrixXd & measurement_covariance_subset,
+  Eigen::MatrixXd & kalman_gain_subset, Eigen::MatrixXd & hphr_inverse,
+  Eigen::MatrixXd & state_to_measurement_subset)
 {
-  FB_DEBUG(
-    "---------------------- Ekf::correct ----------------------\n" <<
-      "State is:\n" <<
-      state_ <<
-      "\n"
-      "Topic is:\n" <<
-      measurement.topic_name_ <<
-      "\n"
-      "Measurement is:\n" <<
-      measurement.measurement_ <<
-      "\n"
-      "Measurement topic name is:\n" <<
-      measurement.topic_name_ <<
-      "\n\n"
-      "Measurement covariance is:\n" <<
-      measurement.covariance_ << "\n");
-
   // We don't want to update everything, so we need to build matrices that only
   // update the measured parts of our state vector. Throughout prediction and
   // correction, we attempt to maximize efficiency in Eigen.
-
-  // First, determine how many state vector values we're updating
-  std::vector<size_t> update_indices;
-  for (size_t i = 0; i < measurement.update_vector_.size(); ++i) {
-    if (measurement.update_vector_[i]) {
-      // Handle nan and inf values in measurements
-      if (std::isnan(measurement.measurement_(i))) {
-        FB_DEBUG(
-          "Value at index " << i <<
-            " was nan. Excluding from update.\n");
-      } else if (std::isinf(measurement.measurement_(i))) {
-        FB_DEBUG(
-          "Value at index " << i <<
-            " was inf. Excluding from update.\n");
-      } else {
-        update_indices.push_back(i);
-      }
-    }
-  }
-
   FB_DEBUG("Update indices are:\n" << update_indices << "\n");
 
   size_t update_size = update_indices.size();
@@ -100,10 +70,6 @@ void Ekf::correct(const Measurement & measurement)
   // Now set up the relevant matrices
   Eigen::VectorXd state_subset(update_size);       // x (in most literature)
   Eigen::VectorXd measurement_subset(update_size);  // z
-  Eigen::MatrixXd measurement_covariance_subset(update_size, update_size);  // R
-  Eigen::MatrixXd state_to_measurement_subset(update_size, state_.rows());  // H
-  Eigen::MatrixXd kalman_gain_subset(state_.rows(), update_size);          // K
-  Eigen::VectorXd innovation_subset(update_size);  // z - Hx
 
   state_subset.setZero();
   measurement_subset.setZero();
@@ -111,6 +77,9 @@ void Ekf::correct(const Measurement & measurement)
   state_to_measurement_subset.setZero();
   kalman_gain_subset.setZero();
   innovation_subset.setZero();
+  // Greenzie: resize, since the size may be unknown to the generic caller
+  // (initialization check in FilterBase::processMeasurement)
+  state_to_measurement_subset.resize(update_size, STATE_SIZE);
 
   // Now build the sub-matrices from the full-sized matrices
   for (size_t i = 0; i < update_size; ++i) {
@@ -126,7 +95,7 @@ void Ekf::correct(const Measurement & measurement)
     // than exclude the measurement or make up a covariance, just take
     // the absolute value.
     if (measurement_covariance_subset(i, i) < 0) {
-      FB_DEBUG(
+      FB_VERBOSE(
         "WARNING: Negative covariance for index " <<
           i << " of measurement (value is" <<
           measurement_covariance_subset(i, i) <<
@@ -143,7 +112,7 @@ void Ekf::correct(const Measurement & measurement)
     // measurement can be completely without error, so add a small
     // amount in that case.
     if (measurement_covariance_subset(i, i) < 1e-9) {
-      FB_DEBUG(
+      FB_VERBOSE(
         "WARNING: measurement had very small error covariance for index " <<
           update_indices[i] <<
           ". Adding some noise to maintain filter stability.\n");
@@ -159,7 +128,7 @@ void Ekf::correct(const Measurement & measurement)
     state_to_measurement_subset(i, update_indices[i]) = 1;
   }
 
-  FB_DEBUG(
+  FB_VERBOSE(
     "Current state subset is:\n" <<
       state_subset << "\nMeasurement subset is:\n" <<
       measurement_subset << "\nMeasurement covariance subset is:\n" <<
@@ -170,7 +139,7 @@ void Ekf::correct(const Measurement & measurement)
   // (1) Compute the Kalman gain: K = (PH') / (HPH' + R)
   Eigen::MatrixXd pht =
     estimate_error_covariance_ * state_to_measurement_subset.transpose();
-  Eigen::MatrixXd hphr_inverse =
+  hphr_inverse =
     (state_to_measurement_subset * pht + measurement_covariance_subset)
     .inverse();
   kalman_gain_subset.noalias() = pht * hphr_inverse;
@@ -186,12 +155,72 @@ void Ekf::correct(const Measurement & measurement)
       innovation_subset(i) = ::angles::normalize_angle(innovation_subset(i));
     }
   }
+}
+
+void Ekf::correct(const Measurement & measurement)
+{
+  FB_DEBUG(
+    "---------------------- Ekf::correct ----------------------\n" <<
+      "State is:\n" << state_ << "\n"
+      "Topic is:\n" << measurement.topic_name_ << "\n"
+      "Time is: " << std::setprecision(16) << filter_utilities::toSec(measurement.time_) << "\n"
+      "Measurement is:\n" << measurement.measurement_ << "\n"
+      "Measurement topic name is:\n" << measurement.topic_name_ << "\n\n"
+      "Measurement covariance is:\n" << measurement.covariance_ << "\n");
+
+  // Greenzie: prepare the correction for integration into the state and
+  // covariance
+  std::vector<size_t> update_indices;
+  getUpdateIndices(measurement, update_indices);
+  size_t update_size = update_indices.size();
+  Eigen::VectorXd innovation_subset(update_size);  // z - Hx
+  Eigen::MatrixXd kalman_gain_subset(STATE_SIZE, update_size);  // K
+  Eigen::MatrixXd state_to_measurement_subset(update_size, STATE_SIZE);  // H
+  Eigen::MatrixXd measurement_covariance_subset(update_size, update_size);  // R
+  Eigen::MatrixXd hphr_inverse;  // Sized by prepareCorrect
+  innovation_subset.setZero();
+  kalman_gain_subset.setZero();
+  state_to_measurement_subset.setZero();
+  measurement_covariance_subset.setZero();
+  prepareCorrect(
+    measurement, update_indices, innovation_subset,
+    measurement_covariance_subset, kalman_gain_subset, hphr_inverse,
+    state_to_measurement_subset);
+
+  // Greenzie: speed-dependent heading gain. Scales the yaw and yaw rate rows of
+  // the Kalman gain between heading_gain_at_low_speed_ (at or below the low
+  // speed) and 1 (at or above the high speed).
+  if (measurement.is_speed_dependent_heading_gain_enabled_) {
+    const double low_speed = measurement.heading_gain_low_speed_mps_;
+    const double high_speed = measurement.heading_gain_high_speed_mps_;
+    const double low_speed_gain =
+      std::fmin(1.0, std::fmax(0.0, measurement.heading_gain_at_low_speed_));
+    const double speed = std::hypot(state_(StateMemberVx), state_(StateMemberVy));
+    double heading_gain_scale = 1.0;
+
+    if (high_speed > low_speed) {
+      const double speed_alpha = std::fmin(
+        1.0, std::fmax(0.0, (speed - low_speed) / (high_speed - low_speed)));
+      heading_gain_scale = low_speed_gain + (1.0 - low_speed_gain) * speed_alpha;
+    } else if (speed <= low_speed) {
+      heading_gain_scale = low_speed_gain;
+    }
+
+    kalman_gain_subset.row(StateMemberYaw) *= heading_gain_scale;
+    kalman_gain_subset.row(StateMemberVyaw) *= heading_gain_scale;
+  }
+
+  const double squared_mahalanobis =
+    getSquaredMahalanobisDistance(innovation_subset, hphr_inverse);
+  FB_DEBUG(
+    "Squared Mahalanobis is: " << squared_mahalanobis << "\n" <<
+      "Threshold is: " << measurement.mahalanobis_thresh_ * measurement.mahalanobis_thresh_ <<
+      "\n" << "Innovation is: " << innovation_subset << "\n" <<
+      "Innovation covariance is:\n" << hphr_inverse << "\n");
+  recordSquaredMahalanobisDistance(measurement, squared_mahalanobis);
 
   // (2) Check Mahalanobis distance between mapped measurement and state.
-  if (checkMahalanobisThreshold(
-      innovation_subset, hphr_inverse,
-      measurement.mahalanobis_thresh_))
-  {
+  if (checkMahalanobisThreshold(squared_mahalanobis, measurement.mahalanobis_thresh_)) {
     // (3) Apply the gain to the difference between the state and measurement: x
     // = x + K(z - Hx)
     state_.noalias() += kalman_gain_subset * innovation_subset;
@@ -208,15 +237,17 @@ void Ekf::correct(const Measurement & measurement)
 
     // Handle wrapping of angles
     wrapStateAngles();
-
-    FB_DEBUG(
-      "Kalman gain subset is:\n" <<
-        kalman_gain_subset << "\nInnovation is:\n" <<
-        innovation_subset << "\nCorrected full state is:\n" <<
-        state_ << "\nCorrected full estimate error covariance is:\n" <<
-        estimate_error_covariance_ <<
-        "\n\n---------------------- /Ekf::correct ----------------------\n");
+  } else if (save_rejected_measurement_topics_) {
+    rejected_measurement_topics_.push_back(measurement.topic_name_);
   }
+
+  FB_DEBUG(
+    "Kalman gain subset is:\n" <<
+      kalman_gain_subset << "\nInnovation is:\n" <<
+      innovation_subset << "\nCorrected full state is:\n" <<
+      state_ << "\nCorrected full estimate error covariance is:\n" <<
+      estimate_error_covariance_ <<
+      "\n\n---------------------- /Ekf::correct ----------------------\n");
 }
 
 void Ekf::predict(

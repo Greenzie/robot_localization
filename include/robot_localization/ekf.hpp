@@ -33,6 +33,8 @@
 #ifndef ROBOT_LOCALIZATION__EKF_HPP_
 #define ROBOT_LOCALIZATION__EKF_HPP_
 
+#include <vector>
+
 #include "rclcpp/time.hpp"
 #include "robot_localization/filter_base.hpp"
 #include "robot_localization/measurement.hpp"
@@ -66,6 +68,33 @@ public:
    * @param[in] measurement - The measurement to fuse with our estimate
    */
   void correct(const Measurement & measurement) override;
+
+  /**
+   * @brief Greenzie: prepares the correction up to the outlier rejection,
+   * after which correct() integrates the prepared correction
+   *
+   * @param[in] measurement - The measurement to prepare to fuse with the state
+   * estimate
+   * @param[in] update_indices - The indexes of the measurement that will be
+   * used to update the state
+   * @param[out] innovation_subset - The innovation which applies to the subset
+   * of the state that matches the measurement
+   * @param[out] measurement_covariance_subset - The subset of the covariance
+   * that applies to this measurement
+   * @param[out] kalman_gain_subset - The Kalman gain which applies to the
+   * subset of the state that matches the measurement
+   * @param[out] hphr_inverse - Used for computing the Kalman gain and checking
+   * the Mahalanobis distance
+   * @param[out] state_to_measurement_subset - Used for computing the Kalman
+   * gain and gain residual
+   */
+  void prepareCorrect(
+    const Measurement & measurement,
+    const std::vector<size_t> & update_indices,
+    Eigen::VectorXd & innovation_subset,
+    Eigen::MatrixXd & measurement_covariance_subset,
+    Eigen::MatrixXd & kalman_gain_subset, Eigen::MatrixXd & hphr_inverse,
+    Eigen::MatrixXd & state_to_measurement_subset) override;
 
   /**
    * @brief Carries out the predict step in the predict/update cycle.

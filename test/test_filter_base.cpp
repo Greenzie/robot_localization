@@ -32,9 +32,11 @@
 #include <iostream>
 #include <queue>
 #include <string>
+#include <vector>
 
 #include "Eigen/Dense"
 #include "gtest/gtest.h"
+
 #include "robot_localization/filter_base.hpp"
 #include "robot_localization/filter_common.hpp"
 #include "robot_localization/filter_utilities.hpp"
@@ -64,6 +66,20 @@ public:
       EXPECT_EQ(measurement.update_vector_[i], true);
     }
   }
+
+  // Greenzie: FilterBase::processMeasurement checks the initialization
+  // threshold through prepareCorrect; a zero innovation always passes.
+  void prepareCorrect(
+    const Measurement & /*measurement*/,
+    const std::vector<size_t> & update_indices,
+    Eigen::VectorXd & innovation_subset,
+    Eigen::MatrixXd & /*measurement_covariance_subset*/,
+    Eigen::MatrixXd & /*kalman_gain_subset*/, Eigen::MatrixXd & innov_mat_inv,
+    Eigen::MatrixXd & /*aux_mat*/) override
+  {
+    innovation_subset = Eigen::VectorXd::Zero(update_indices.size());
+    innov_mat_inv = Eigen::MatrixXd::Identity(update_indices.size(), update_indices.size());
+  }
   void predict(
     const rclcpp::Time & /*reference_time*/,
     const rclcpp::Duration & /*delta*/) {}
@@ -75,6 +91,20 @@ public:
   FilterDerived2() {}
 
   void correct(const Measurement & /*measurement*/) {}
+
+  // Greenzie: FilterBase::processMeasurement checks the initialization
+  // threshold through prepareCorrect; a zero innovation always passes.
+  void prepareCorrect(
+    const Measurement & /*measurement*/,
+    const std::vector<size_t> & update_indices,
+    Eigen::VectorXd & innovation_subset,
+    Eigen::MatrixXd & /*measurement_covariance_subset*/,
+    Eigen::MatrixXd & /*kalman_gain_subset*/, Eigen::MatrixXd & innov_mat_inv,
+    Eigen::MatrixXd & /*aux_mat*/) override
+  {
+    innovation_subset = Eigen::VectorXd::Zero(update_indices.size());
+    innov_mat_inv = Eigen::MatrixXd::Identity(update_indices.size(), update_indices.size());
+  }
 
   void predict(
     const rclcpp::Time & /*reference_time*/,

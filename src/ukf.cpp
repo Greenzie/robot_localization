@@ -31,6 +31,8 @@
  */
 #include "robot_localization/ukf.hpp"
 
+#include <cmath>
+#include <iomanip>
 #include <vector>
 
 #include "angles/angles.h"
@@ -71,15 +73,14 @@ void Ukf::setConstants(double alpha, double kappa, double beta)
   }
 }
 
-void Ukf::correct(const Measurement & measurement)
+void Ukf::prepareCorrect(
+  const Measurement & measurement,
+  const std::vector<size_t> & update_indices,
+  Eigen::VectorXd & innovation_subset,
+  Eigen::MatrixXd & measurement_covariance_subset,
+  Eigen::MatrixXd & kalman_gain_subset, Eigen::MatrixXd & inv_innov_cov,
+  Eigen::MatrixXd & predicted_meas_covar)
 {
-  FB_DEBUG(
-    "---------------------- Ukf::correct ----------------------\n" <<
-      "State is:\n" <<
-      state_ << "\nMeasurement is:\n" <<
-      measurement.measurement_ << "\nMeasurement covariance is:\n" <<
-      measurement.covariance_ << "\n");
-
   // In our implementation, it may be that after we call predict once, we call
   // correct several times in succession (multiple measurements with different
   // time stamps). In that event, the sigma points need to be updated to reflect
@@ -92,25 +93,6 @@ void Ukf::correct(const Measurement & measurement)
   // We don't want to update everything, so we need to build matrices that only
   // update the measured parts of our state vector
 
-  // First, determine how many state vector values we're updating
-  std::vector<size_t> update_indices;
-  for (size_t i = 0; i < measurement.update_vector_.size(); ++i) {
-    if (measurement.update_vector_[i]) {
-      // Handle nan and inf values in measurements
-      if (std::isnan(measurement.measurement_(i))) {
-        FB_DEBUG(
-          "Value at index " << i <<
-            " was nan. Excluding from update.\n");
-      } else if (std::isinf(measurement.measurement_(i))) {
-        FB_DEBUG(
-          "Value at index " << i <<
-            " was inf. Excluding from update.\n");
-      } else {
-        update_indices.push_back(i);
-      }
-    }
-  }
-
   FB_DEBUG("Update indices are:\n" << update_indices << "\n");
 
   size_t update_size = update_indices.size();
@@ -118,13 +100,9 @@ void Ukf::correct(const Measurement & measurement)
   // Now set up the relevant matrices
   Eigen::VectorXd state_subset(update_size);       // x (in most literature)
   Eigen::VectorXd measurement_subset(update_size);  // z
-  Eigen::MatrixXd measurement_covariance_subset(update_size, update_size);  // R
   Eigen::MatrixXd state_to_measurement_subset(update_size, STATE_SIZE);   // H
-  Eigen::MatrixXd kalman_gain_subset(STATE_SIZE, update_size);            // K
-  Eigen::VectorXd innovation_subset(update_size);  // z - Hx
   Eigen::VectorXd predicted_measurement(update_size);
   Eigen::VectorXd sigma_diff(update_size);
-  Eigen::MatrixXd predicted_meas_covar(update_size, update_size);
   Eigen::MatrixXd cross_covar(STATE_SIZE, update_size);
 
   std::vector<Eigen::VectorXd> sigma_point_measurements(
@@ -139,6 +117,9 @@ void Ukf::correct(const Measurement & measurement)
   predicted_measurement.setZero();
   predicted_meas_covar.setZero();
   cross_covar.setZero();
+  // Greenzie: resize, since the size may be unknown to the generic caller
+  // (initialization check in FilterBase::processMeasurement)
+  predicted_meas_covar.resize(update_size, update_size);
 
   // Now build the sub-matrices from the full-sized matrices
   for (size_t i = 0; i < update_size; ++i) {
@@ -260,7 +241,7 @@ void Ukf::correct(const Measurement & measurement)
 
   // (3) Compute the Kalman gain, making sure to use the actual measurement
   // covariance: K = P_xz * (P_zz + R)^-1
-  Eigen::MatrixXd inv_innov_cov =
+  inv_innov_cov =
     (predicted_meas_covar + measurement_covariance_subset).inverse();
   kalman_gain_subset = cross_covar * inv_innov_cov;
 
@@ -278,11 +259,70 @@ void Ukf::correct(const Measurement & measurement)
     }
   }
 
+  FB_DEBUG("Cross covariance is:\n" << cross_covar << "\n");
+}
+
+void Ukf::correct(const Measurement & measurement)
+{
+  FB_DEBUG(
+    "---------------------- Ukf::correct ----------------------\n" <<
+      "State is:\n" << state_ <<
+      "\nTopic is:\n" << measurement.topic_name_ <<
+      "\nTime is:\n" << std::setprecision(16) << filter_utilities::toSec(measurement.time_) <<
+      "\nMeasurement is:\n" << measurement.measurement_ <<
+      "\nMeasurement covariance is:\n" << measurement.covariance_ << "\n");
+
+  // Greenzie: prepare the correction for integration into the state and
+  // covariance
+  std::vector<size_t> update_indices;
+  getUpdateIndices(measurement, update_indices);
+  size_t update_size = update_indices.size();
+  Eigen::VectorXd innovation_subset(update_size);  // z - Hx
+  Eigen::MatrixXd kalman_gain_subset(STATE_SIZE, update_size);  // K
+  Eigen::MatrixXd measurement_covariance_subset(update_size, update_size);  // R
+  Eigen::MatrixXd predicted_meas_covar(update_size, update_size);
+  Eigen::MatrixXd inv_innov_cov;  // Sized by prepareCorrect
+  innovation_subset.setZero();
+  kalman_gain_subset.setZero();
+  predicted_meas_covar.setZero();
+  measurement_covariance_subset.setZero();
+  prepareCorrect(
+    measurement, update_indices, innovation_subset,
+    measurement_covariance_subset, kalman_gain_subset, inv_innov_cov,
+    predicted_meas_covar);
+
+  // Greenzie: speed-dependent heading gain (same as Ekf::correct)
+  if (measurement.is_speed_dependent_heading_gain_enabled_) {
+    const double low_speed = measurement.heading_gain_low_speed_mps_;
+    const double high_speed = measurement.heading_gain_high_speed_mps_;
+    const double low_speed_gain =
+      std::fmin(1.0, std::fmax(0.0, measurement.heading_gain_at_low_speed_));
+    const double speed = std::hypot(state_(StateMemberVx), state_(StateMemberVy));
+    double heading_gain_scale = 1.0;
+
+    if (high_speed > low_speed) {
+      const double speed_alpha = std::fmin(
+        1.0, std::fmax(0.0, (speed - low_speed) / (high_speed - low_speed)));
+      heading_gain_scale = low_speed_gain + (1.0 - low_speed_gain) * speed_alpha;
+    } else if (speed <= low_speed) {
+      heading_gain_scale = low_speed_gain;
+    }
+
+    kalman_gain_subset.row(StateMemberYaw) *= heading_gain_scale;
+    kalman_gain_subset.row(StateMemberVyaw) *= heading_gain_scale;
+  }
+
+  const double squared_mahalanobis =
+    getSquaredMahalanobisDistance(innovation_subset, inv_innov_cov);
+  FB_DEBUG(
+    "Squared Mahalanobis is: " << squared_mahalanobis << "\n" <<
+      "Threshold is: " << measurement.mahalanobis_thresh_ * measurement.mahalanobis_thresh_ <<
+      "\n" << "Innovation is: " << innovation_subset << "\n" <<
+      "Innovation covariance is:\n" << inv_innov_cov << "\n");
+  recordSquaredMahalanobisDistance(measurement, squared_mahalanobis);
+
   // (5) Check Mahalanobis distance of innovation
-  if (checkMahalanobisThreshold(
-      innovation_subset, inv_innov_cov,
-      measurement.mahalanobis_thresh_))
-  {
+  if (checkMahalanobisThreshold(squared_mahalanobis, measurement.mahalanobis_thresh_)) {
     state_.noalias() += kalman_gain_subset * innovation_subset;
 
     // (6) Compute the new estimate error covariance P = P - (K * P_zz * K')
@@ -297,13 +337,14 @@ void Ukf::correct(const Measurement & measurement)
 
     FB_DEBUG(
       "Predicated measurement covariance is:\n" <<
-        predicted_meas_covar << "\nCross covariance is:\n" <<
-        cross_covar << "\nKalman gain subset is:\n" <<
+        predicted_meas_covar << "\nKalman gain subset is:\n" <<
         kalman_gain_subset << "\nInnovation:\n" <<
         innovation_subset << "\nCorrected full state is:\n" <<
         state_ << "\nCorrected full estimate error covariance is:\n" <<
         estimate_error_covariance_ <<
         "\n\n---------------------- /Ukf::correct ----------------------\n");
+  } else if (save_rejected_measurement_topics_) {
+    rejected_measurement_topics_.push_back(measurement.topic_name_);
   }
 }
 

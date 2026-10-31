@@ -84,7 +84,8 @@ TEST(UkfTest, Measurements) {
   rclcpp::Time time1(1000);
   filter->robot_localization::RosUkf::enqueueMeasurement(
     "odom0", measurement, measurementCovariance, updateVector,
-    std::numeric_limits<double>::max(), time1);
+    false, std::numeric_limits<double>::max(),
+    std::numeric_limits<double>::max(), time1);  // Greenzie: publish flag, init threshold
 
   filter->robot_localization::RosUkf::integrateMeasurements(rclcpp::Time(1001));
 
@@ -111,7 +112,8 @@ TEST(UkfTest, Measurements) {
 
   filter->robot_localization::RosUkf::enqueueMeasurement(
     "odom0", measurement2, measurementCovariance, updateVector,
-    std::numeric_limits<double>::max(), time2);
+    false, std::numeric_limits<double>::max(),
+    std::numeric_limits<double>::max(), time2);  // Greenzie: publish flag, init threshold
 
   filter->robot_localization::RosUkf::integrateMeasurements(rclcpp::Time(1003));
 

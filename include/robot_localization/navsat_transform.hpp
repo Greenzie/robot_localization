@@ -33,6 +33,7 @@
 #define ROBOT_LOCALIZATION__NAVSAT_TRANSFORM_HPP_
 
 #include <memory>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -50,9 +51,9 @@
 #include "robot_localization/srv/to_ll.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
-#include "tf2/LinearMath/Quaternion.h"
-#include "tf2/LinearMath/Transform.h"
-#include "tf2/LinearMath/Vector3.h"
+#include "tf2/LinearMath/Quaternion.hpp"
+#include "tf2/LinearMath/Transform.hpp"
+#include "tf2/LinearMath/Vector3.hpp"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/static_transform_broadcaster.h"
 #include "tf2_ros/transform_listener.h"
@@ -135,7 +136,8 @@ private:
    * offset from the vehicle's centroid and returns the world-frame pose of said
    * centroid.
    */
-  void getRobotOriginWorldPose(
+  // Greenzie: returns whether robot_odom_pose was transformed
+  bool getRobotOriginWorldPose(
     const tf2::Transform & gps_odom_pose,
     tf2::Transform & robot_odom_pose,
     const rclcpp::Time & transform_time);
@@ -496,6 +498,35 @@ private:
    * converted GPS odometry message.
    */
   bool zero_altitude_;
+
+  /**
+   * @brief Greenzie: quantity of good GPS measurements to ignore before
+   * defining the GPS transform origin
+   */
+  int origin_measurement_delay_;
+
+  /**
+   * @brief Greenzie: quantity of good GPS measurements averaged to define the
+   * GPS transform origin
+   */
+  int origin_measurement_qty_to_avg_;
+
+  /**
+   * @brief Greenzie: good GPS measurements currently included in the origin
+   */
+  int current_good_gps_count_;
+
+  /**
+   * @brief Greenzie: good GPS measurements ignored so far before the origin
+   */
+  int current_delayed_gps_count_;
+
+  /**
+   * @brief Greenzie: latitude, longitude and altitude of the measurements
+   * averaged for a more stable origin
+   */
+  std::vector<std::vector<double>> origin_llh_{std::vector<double>(), std::vector<double>(),
+    std::vector<double>()};
 
   /**
    * @brief Manual datum pose to be used by the transform computation
